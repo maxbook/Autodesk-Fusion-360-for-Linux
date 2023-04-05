@@ -1,1180 +1,805 @@
 #!/bin/bash
 
-####################################################################################################
-# Name:         Autodesk Fusion 360 - Setup Wizard (Linux)                                         #
-# Description:  With this file you can install Autodesk Fusion 360 on Linux.                       #
-# Author:       Steve Zabka                                                                        #
-# Author URI:   https://cryinkfly.com                                                              #
-# License:      MIT                                                                                #
-# Copyright (c) 2020-2022                                                                          #
-# Time/Date:    09:30/26.02.2023                                                                   #
-# Version:      1.8.6                                                                              #
-####################################################################################################
-
-# Path: /$HOME/.fusion360/bin/install.sh
-
-###############################################################################################################################################################
-# DESCRIPTION IN DETAIL                                                                                                                                       #
-###############################################################################################################################################################
-# With the help of my setup wizard, you will be given a way to install Autodesk Fusion 360 with some extensions on                                            #
-# Linux so that you don't have to use Windows or macOS for this program in the future!                                                                        #
-#                                                                                                                                                             #
-# Also, my setup wizard will guides you through the installation step by step and will install some required packages.                                        #
-#                                                                                                                                                             #
-# The next one is you have the option of installing the program directly on your system or you can install it on an external storage medium.                  #
-#                                                                                                                                                             #
-# But it's important to know, you must to purchase the licenses directly from the manufacturer of Autodesk Fusion 360, when you will work with them on Linux! #
-###############################################################################################################################################################
+############################################################################################################################
+# Name:         Autodesk Fusion 360 - Setup Wizard (Linux)                                                                 #
+# Description:  With this file you can install Autodesk Fusion 360 on different Linux distributions.                       #
+# Author:       Steve Zabka                                                                                                #
+# Author URI:   https://cryinkfly.com                                                                                      #
+# License:      MIT                                                                                                        #
+# Time/Date:    xx:xx/xx.xx.2023                                                                                           #
+# Version:      1.9.0                                                                                                      #
+# Requires:     "dialog", "wget", "lsb-release", "coreutils", "glxinfo", "pkexec" <-- Minimum for the installer!           #
+# Optional:     Python version: "3.5<" and pip version: "20.3<" <-- Support Vosk (Speech recognition toolkit)              #
+############################################################################################################################
 
 ###############################################################################################################################################################
-# THE INITIALIZATION OF DEPENDENCIES STARTS HERE:                                                                                                             #
+# IMPORTANT INFORMATION FOR USERS:                                                                                                                            #
 ###############################################################################################################################################################
 
-# Default-Path:
-SP_PATH="$HOME/.fusion360"
+# ...                                                                                                                                                         
 
-# Reset the graphics driver value:
-WP_DRIVER="DXVK"
+##############################################################################################################################################################################
+# CONFIGURATION OF THE COLOR SCHEME:                                                                                                                                         #
+##############################################################################################################################################################################
 
-# Reset the logfile-value for the installation of Autodesk Fusion 360!
-SP_FUSION360_CHANGE=0
+function SP_LOAD_COLOR_SHEME {
+    RED=$'\033[0;31m'
+    YELLOW=$'\033[0;33m'
+    GREEN=$'\033[0;32m'
+    NOCOLOR=$'\033[0m'
+}
 
-REQUIRED_COMMANDS=(
-    "yad"
-)
+##############################################################################################################################################################################
+# CONFIGURATION OF THE DIRECTORY STRUCTURE:                                                                                                                                  #
+##############################################################################################################################################################################
 
-###############################################################################################################################################################
+function SP_ADD_DIRECTORIES { 
+    SP_PATH="$HOME/.fusion360"
+    mkdir -p $SP_PATH/{bin,config,locale/{cs-CZ,de-DE,en-US,es-ES,fr-FR,it-IT,ja-JP,ko-KR,zh-CN},wineprefixes,resources/{extensions,graphics,music,downloads},logs,cache}
+}
 
-function SP_CHECK_REQUIRED_COMMANDS {
-    for cmd in "${REQUIRED_COMMANDS[@]}"; do
+##############################################################################################################################################################################
+# RECORDING OF THE INSTALLATION:                                                                                                                                             #
+##############################################################################################################################################################################
+
+function SP_LOG_INSTALLATION {
+    exec 5> "$SP_PATH/logs/setupact.log"
+    BASH_XTRACEFD="5"
+    set -x
+}
+
+##############################################################################################################################################################################
+# CHECK THE REQUIRED PACKAGES FOR THE INSTALLER:                                                                                                                             #
+##############################################################################################################################################################################
+
+function SP_CHECK_REQUIRED_PACKAGES {
+    SP_REQUIRED_COMMANDS=("dialog" "wget" "lsb-release" "coreutils" "glxinfo" "pkexec")
+    for cmd in "${SP_REQUIRED_COMMANDS[@]}"; do
         echo "Testing presence of ${cmd} ..."
         local path="$(command -v "${cmd}")"
         if [ -n "${path}" ]; then
-            echo "Found: ${path}"
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+            SP_DOWNLOAD_LOCALE_INDEX
+            SP_CONFIG_LOCALE
+            SP_CHECK_RAM
+            SP_CHECK_VRAM
+            SP_CHECK_DISC_SPACE
         else
-            echo "No ${cmd} found in \$PATH!"
-            exit 1
+            clear
+            echo -e "${RED}The required packages not installed or founded on your system!${NOCOLOR}"
+            read -p "${YELLOW}Would you like to install these packages on your system to continue the installation of Autodesk Fusion 360? (y/n)${NOCOLOR}" yn
+            case $yn in 
+	            y ) SP_INSTALL_REQUIRED_PACKAGES;
+	                SP_REQUIRED_COMMANDS;;
+	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
+		             exit;;
+	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
+		            exit 1;;
+            esac
         fi
-    done
+    done;
 }
 
-function SP_STRUCTURE {
-  mkdir -p "$SP_PATH/bin"
-  mkdir -p "$SP_PATH/logs"
-  mkdir -p "$SP_PATH/config"
-  mkdir -p "$SP_PATH/graphics"
-  mkdir -p "$SP_PATH/downloads"
-  mkdir -p "$SP_PATH/extensions"
-  mkdir -p "$SP_PATH/wineprefixes"
-  mkdir -p "$SP_PATH/locale/cs-CZ"
-  mkdir -p "$SP_PATH/locale/de-DE"
-  mkdir -p "$SP_PATH/locale/en-US"
-  mkdir -p "$SP_PATH/locale/es-ES"
-  mkdir -p "$SP_PATH/locale/fr-FR"
-  mkdir -p "$SP_PATH/locale/it-IT"
-  mkdir -p "$SP_PATH/locale/ja-JP"
-  mkdir -p "$SP_PATH/locale/ko-KR"
-  mkdir -p "$SP_PATH/locale/zh-CN"
-  # Create a temporary folder with some information for the next step:
-  mkdir -p /tmp/fusion360
-  echo "English" > /tmp/fusion360/settings.txt
-  echo "DXVK" >> /tmp/fusion360/settings.txt
-  echo "English" > "$SP_PATH/config/settings.txt"
-  echo "DXVK" >> "$SP_PATH/config/settings.txt"
+##############################################################################################################################################################################
+# INSTALLATION OF THE REQUIRED PACKAGES FOR THE INSTALLER:                                                                                                                   #
+##############################################################################################################################################################################
+
+function SP_INSTALL_REQUIRED_PACKAGES {    
+    DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
+        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo pacman -S dialog wget lsb-release coreutils mesa-demos polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Debian"* ]] || [[ $DISTRO_VERSION == *"Ubuntu"* ]] || [[ $DISTRO_VERSION == *"Linux Mint"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo apt-get install -y dialog wget lsb-release coreutils mesa-utils policykit-1 
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Fedora"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo dnf install -y dialog wget lsb-release coreutils mesa-utils polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Gentoo"*"Linux"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo emerge -q dev-util/dialog net-misc/wget sys-apps/lsb-release sys-apps/coreutils x11-apps/mesa-progs sys-auth/polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"nixos"* ]] || [[ $DISTRO_VERSION == *"NixOS"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo nix-env -iA nixos.dialog nixos.wget nixos.lsb_release nixos.coreutils nixos.mesa-utils nixos.polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"openSUSE"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo zypper install -y dialog wget lsb-release coreutils Mesa-demo-x polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo dnf install -y dialog wget lsb-release coreutils mesa-utils policykit-1
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Solus"*"Linux"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo eopkg -y install dialog wget lsb-release coreutils mesa-utils polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Void"*"Linux"* ]]; then
+            echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
+            sudo xbps-install -Sy dialog wget lsb-release coreutils mesa-demos polkit
+            echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
+        else
+            echo -e "${YELLOW}The installer doesn't support your Linux distribution at this time!${NOCOLOR}";
+            echo -e "${RED}The installer has been terminated!${NOCOLOR}"
 }
 
-###############################################################################################################################################################
-# ALL LOG-FUNCTIONS ARE ARRANGED HERE:                                                                                                                        #
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# DOWNLOADING THE LANGUAGE PACKS FOR THE INSTALLER:                                                                                                                          #
+##############################################################################################################################################################################
 
-# Provides information about setup actions during installation.
-function SP_LOGFILE_INSTALL {
-  exec 5> "$SP_PATH/logs/setupact.log"
-  BASH_XTRACEFD="5"
-  set -x
+function SP_DOWNLOAD_LOCALE_INDEX {   
+    wget -N -P "$SP_PATH/locale" --progress=dot "https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/locale/locale.sh" 2>&1 |\
+    grep "%" |\
+    sed -u -e "s,\.,,g" | awk '{print $2}' | sed -u -e "s,\%,,g"  | dialog --backtitle "$SP_TITLE" --gauge "Downloading the language index file ..." 10 100
+    chmod +x "$SP_PATH/locale/locale.sh"
+    sleep 1
+    source "$SP_PATH/locale/locale.sh" # shellcheck source=../locale/locale.sh
+    clear
+    SP_LOCALE=$(echo $LANG)
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# CONFIGURATION OF THE LANGUAGE PACKS FOR THE INSTALLER:                                                                                                                     #
+##############################################################################################################################################################################
 
-# Check if already exists a Autodesk Fusion 360 installation on your system.
-function SP_LOGFILE_WINEPREFIX_CHECK {
-  SP_FUSION360_WINEPREFIX_CHECK="$SP_PATH/logs/wineprefixes.log" # Search for wineprefixes.log
-  if [ -f "$SP_FUSION360_WINEPREFIX_CHECK" ]; then
-    cp "$SP_FUSION360_WINEPREFIX_CHECK" "/tmp/fusion360/logs"
-    SP_LOGFILE_WINEPREFIX_INFO # Add/Modify or Delete a exists Wineprefix of Autodesk Fusion 360.
-  else
-    SP_INSTALLDIR # Add a new Wineprefix of Autodesk Fusion 360.
-  fi
+function SP_CONFIG_LOCALE { 
+    if [[ $SP_LOCALE = "01" ]] || [[ $SP_LOCALE == *"zh"*"CN"* ]]; then
+        source "$SP_PATH/locale/zh-CN/locale-zh.sh" # shellcheck source=../locale/zh-CN/locale-zh.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/zh-CN/license-zh.txt"
+    elif [[ $SP_LOCALE = "02" ]] || [[ $SP_LOCALE == *"cs"*"CZ"* ]]; then
+        source "$SP_PATH/locale/cs-CZ/locale-cs.sh" # shellcheck source=../locale/cs-CZ/locale-cs.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/cs-CZ/license-cs.txt"
+    elif [[ $SP_LOCALE = "04" ]] || [[ $SP_LOCALE == *"fr"*"FR"* ]]; then
+        source "$SP_PATH/locale/fr-FR/locale-fr.sh" # shellcheck source=../locale/fr-FR/locale-fr.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/fr-FR/license-fr.txt"
+    elif [[ $SP_LOCALE = "05" ]] || [[ $SP_LOCALE == *"de"*"DE"* ]]; then
+        source "$SP_PATH/locale/de-DE/locale-de.sh" # shellcheck source=../locale/de-DE/locale-de.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/de-DE/license-de.txt"
+    elif [[ $SP_LOCALE = "06" ]] || [[ $SP_LOCALE == *"it"*"IT"* ]]; then
+        source "$SP_PATH/locale/it-IT/locale-it.sh" # shellcheck source=../locale/it-IT/locale-it.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/it-IT/license-it.txt"
+    elif [[ $SP_LOCALE = "07" ]] || [[ $SP_LOCALE == *"ja"*"JP"* ]]; then
+        source "$SP_PATH/locale/ja-JP/locale-ja.sh" # shellcheck source=../locale/ja-JP/locale-ja.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/ja-JP/license-ja.txt"
+    elif [[ $SP_LOCALE = "08" ]] || [[ $SP_LOCALE == *"ko"*"KR"* ]]; then
+        source "$SP_PATH/locale/ko-KR/locale-ko.sh" # shellcheck source=../locale/ko-KR/locale-ko.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/ko-KR/license-ko.txt"
+    elif [[ $SP_LOCALE = "09" ]] || [[ $SP_LOCALE == *"es"*"ES"* ]]; then
+        source "$SP_PATH/locale/es-ES/locale-es.sh" # shellcheck source=../locale/es-ES/locale-es.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/es-ES/license-es.txt"
+    else
+        source "$SP_PATH/locale/en-US/locale-en.sh" # shellcheck source=../locale/en-US/locale-en.sh
+        SP_LICENSE_FILE="$SP_PATH/locale/en-US/license-en.txt"
+    fi
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# CHECKING THE MINIMUM RAM (RANDOM ACCESS MEMORY) REQUIREMENT:                                                                                                               #
+##############################################################################################################################################################################
 
-# Create a WP-TYPE for the .desktop-files:
-function SP_GET_WINEPREFIX_TYPE {
-  if [[ $WP_DIRECTORY = "$SP_PATH/wineprefixes/default" ]]; then
-    WP_TYPE="default"
-  else
-    # Create the directory (custom, custom-1, custom-2, ...)
-    SP_ADD_CUSTOM_WINEPREFIX_TYPE
-  fi
+function SP_CHECK_RAM {
+    GET_RAM_KILOBYTES=$(grep MemTotal /proc/meminfo | awk '{print $2}') # Get total RAM space in kilobytes
+    CONVERT_RAM_GIGABYTES=$(echo "scale=2; $GET_RAM_KILOBYTES / 1024 / 1024" | bc) # Convert kilobytes to gigabytes
+    if (( $(echo "$CONVERT_RAM_GIGABYTES > 4" | bc -l) )); then # Check if RAM is greater than 4 GB
+        echo -e "${GREEN}The total RAM (Random Access Memory) is greater than 4 GByte ($CONVERT_RAM_GIGABYTES GByte) and Fusion 360 will run more stable later!${NOCOLOR}"
+    else
+        echo -e "${RED}The total RAM (Random Access Memory) is not greater than 4 GByte ($CONVERT_RAM_GIGABYTES GByte) and Fusion 360 may run unstable later with insufficient RAM memory!${NOCOLOR}"
+        read -p "${YELLOW}Are you sure you want to continue with the installation? (y/n)${NOCOLOR}" yn
+            case $yn in 
+	            y ) ...;;
+	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
+		             exit;;
+	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
+		            exit 1;;
+            esac
+    fi
 }
 
-function SP_ADD_CUSTOM_WINEPREFIX_TYPE {
-  WP_TYPE="custom"
-  if [[ -e $WP_TYPE || -L $WP_TYPE ]] ; then
-    i=0
-    while [[ -e $WP_TYPE-$i || -L $WP_TYPE-$i ]] ; do
-        (( i++ ))
-    done
-    WP_TYPE=$WP_TYPE-$i
-  fi
+##############################################################################################################################################################################
+# CHECKING THE MINIMUM VRAM (VIDEO RAM) REQUIREMENT:                                                                                                                         #
+##############################################################################################################################################################################
+
+function SP_CHECK_VRAM {
+    # Get the total memory of the graphics card
+    GET_VRAM_MEGABYTES=$(dmesg | grep -o -P -i "(?<=vram:).*(?=M 0x)")
+    # Check if the total memory is greater than 1 GByte
+    if [ "$GET_VRAM_MEGABYTES" -gt 1024 ]; then
+        echo -e "${GREEN}The total VRAM (Video RAM) is greater than 1 GByte ($CONVERT_RAM_GIGABYTES GByte) and Fusion 360 will run more stable later!${NOCOLOR}"
+    else
+        echo -e "${RED}The total VRAM (Video RAM) is not greater than 1 GByte ($CONVERT_RAM_GIGABYTES GByte) and Fusion 360 may run unstable later with insufficient RAM memory!${NOCOLOR}"
+        read -p "${YELLOW}Are you sure you want to continue with the installation? (y/n)${NOCOLOR}" yn
+            case $yn in 
+	            y ) ...;;
+	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
+		             exit;;
+	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
+		            exit 1;;
+            esac
+    fi
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# CHECKING THE MINIMUM DISK SPACE (DEFAULT: HOME-PARTITION) REQUIREMENT:                                                                                                     #
+##############################################################################################################################################################################
 
-function SP_LOGFILE_WINEPREFIX {
-if [ $SP_FUSION360_CHANGE -eq 1 ]; then
-  echo "FALSE" >> "$SP_PATH/logs/wineprefixes.log"
-  echo "$WP_TYPE" >> "$SP_PATH/logs/wineprefixes.log"
-  echo "$WP_DRIVER" >> "$SP_PATH/logs/wineprefixes.log"
-  echo "$WP_DIRECTORY" >> "$SP_PATH/logs/wineprefixes.log"
-fi
+function SP_CHECK_DISK_SPACE {
+    # Get the free disk memory size in GB
+    GET_DISK_SPACE=$(df -h /home | awk '{print $4}' | tail -1)
+    echo -e "${GREEN}The free disk memory size is: $GET_DISK_SPACE${NOCOLOR}"
+    if [[ $GET_DISK_SPACE > 10G ]]; then # Check if the home size is greater than 10GB
+        echo -e "${GREEN}The free disk memory size is greater than 10GB.${NOCOLOR}"
+    else
+        echo -e "${YELLOW}There is not enough disk free memory to continue installing Fusion 360 on your system!${NOCOLOR}"
+        echo -e "${YELLOW}Make more space in your home partition or select a different hard drive.${NOCOLOR}"
+        echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+        exit;
+    fi
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# CHECK THE GRAPHICS CARD DRIVER:                                                                                                                                            #
+##############################################################################################################################################################################
 
-function SP_INSTALLDIR_CHECK {
-# Check if this wineprefix already exist or not!
-WP_PATH_CHECK="$WP_DIRECTORY/box-run.sh"
-if [[ -f "$WP_PATH_CHECK" ]]; then
-    echo "FALSE"
-    SP_INSTALLDIR_INFO
-else
-    echo "TRUE"
-    SP_FUSION360_CHANGE=1
-    SP_WINE_SETTINGS
-fi
+function SP_CHECK_GPU_DRIVER {
+    if [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"AMD"* ]]; then
+        GPU_DRIVER="amd"
+        SP_INSTALL_GPU_DRIVER
+    elif [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"Intel"* ]]; then
+        GPU_DRIVER="intel"
+        SP_INSTALL_GPU_DRIVER
+    # Install the latest driver for Nvidia graphics card if not installed:
+    elif [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"NVIDIA"* ]]; then
+        GPU_DRIVER="nvidia"
+        SP_INSTALL_GPU_DRIVER
+    else
+        echo -e "${YELLOW}The graphics card analysis failed because your graphics card was not detected!${NOCOLOR}"
+        echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+        exit;
+    fi
 }
 
-###############################################################################################################################################################
-# ALL LOCALE-FUNCTIONS ARE ARRANGED HERE:                                                                                                                     #
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# INSTALLATION OF THE GRAPHICS CARD DRIVER:                                                                                                                                  #
+##############################################################################################################################################################################
 
-# Load the index of locale files:
-function SP_LOCALE_INDEX {
-  wget -N -P "$SP_PATH/locale" https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/locale/locale.sh
-  chmod +x "$SP_PATH/locale/locale.sh"
-  # shellcheck source=../locale/locale.sh
-  source "$SP_PATH/locale/locale.sh"
-  SP_LOCALE_EN
+function SP_INSTALL_GPU_DRIVER {    
+    DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
+        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]]; then
+            if grep -q '^\[multilib\]$' /etc/pacman.conf ; then
+                echo -e "${GREEN}The multilib repository exists on your computer.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The multilib repository will be enable in the [multilib] section in /etc/pacman.conf!${NOCOLOR}"
+                echo "[multilib]" | sudo tee -a /etc/pacman.conf
+                echo "Include = /etc/pacman.d/mirrorlist" | sudo tee -a /etc/pacman.conf
+            fi
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                if [[ $(pacman -Qe) == *"mesa"*"lib32-mesa"*"mesa-vdpau"*"lib32-mesa-vdpau"*"lib32-vulkan-radeon"*"vulkan-radeon"*"glu"*"lib32-glu"*"vulkan-icd-loader"*"lib32-vulkan-icd-loader"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo pacman -Syu && sudo pacman -Syy
+                    sudo pacman -S --needed mesa lib32-mesa mesa-vdpau lib32-mesa-vdpau lib32-vulkan-radeon vulkan-radeon glu lib32-glu vulkan-icd-loader lib32-vulkan-icd-loader
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                if [[ $(pacman -Qe) == *"lib32-mesa"*"vulkan-inte"*"lib32-vulkan-intel"*"vulkan-icd-loader"*"lib32-vulkan-icd-loader"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo pacman -Syu && sudo pacman -Syy
+                    sudo pacman -S --needed lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            else
+                if [[ $(pacman -Qe) == *"nvidia-dkms"*"nvidia-utils"*"lib32-nvidia-utils"*"nvidia-settings"*"vulkan-icd-loader"*"lib32-vulkan-icd-loader"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo pacman -Syu && sudo pacman -Syy
+                    sudo pacman -S --needed nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings vulkan-icd-loader lib32-vulkan-icd-loader
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"Debian"* ]] || [[ $DISTRO_VERSION == *"Ubuntu"* ]] || [[ $DISTRO_VERSION == *"Linux Mint"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                if [[ $(apt list --installed) == *"software-properties-common"*"firmware-linux"*"firmware-linux-nonfree"*"libdrm-amdgpu1"*"xserver-xorg-video-amdgpu"*"mesa-vulkan-drivers"*"libvulkan1"*"vulkan-tools"*"vulkan-utils"*"vulkan-validationlayers"*"mesa-opencl-icd"*]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    if [[ $DISTRO_VERSION == *"Debian"* ]]; then
+                        if [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"contrib"* ]] && [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"non-free"* ]]; then
+                            sudo apt-get update && sudo apt-get install -y software-properties-common
+                            sudo apt-add-repository contrib && sudo apt-add-repository non-free # The package "software-properties-common" must be installed before!
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y firmware-linux firmware-linux-nonfree libdrm-amdgpu1 xserver-xorg-video-amdgpu mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-utils vulkan-validationlayers mesa-opencl-icd
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y software-properties-common firmware-linux firmware-linux-nonfree libdrm-amdgpu1 xserver-xorg-video-amdgpu mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-utils vulkan-validationlayers mesa-opencl-icd
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    else
+                        if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://ppa.launchpadcontent.net/oibaf/graphics-drivers/ubuntu"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y firmware-linux firmware-linux-nonfree libdrm-amdgpu1 xserver-xorg-video-amdgpu mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-utils vulkan-validationlayers mesa-opencl-icd
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo add-apt-repository ppa:oibaf/graphics-drivers
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y firmware-linux firmware-linux-nonfree libdrm-amdgpu1 xserver-xorg-video-amdgpu mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-utils vulkan-validationlayers mesa-opencl-icd
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                if [[ $(apt list --installed) == *"mesa-utils"*"libegl1-mesa"*"mesa-vulkan-drivers"*"mesa-vulkan-drivers"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    if [[ $DISTRO_VERSION == *"Debian"* ]]; then
+                        if [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"contrib"* ]] && [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"non-free"* ]]; then
+                            sudo apt-get update && sudo apt-get install -y software-properties-common
+                            sudo apt-add-repository contrib && sudo apt-add-repository non-free # The package "software-properties-common" must be installed before!
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y mesa-utils libgl1-mesa mesa-vulkan-drivers
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y software-properties-common mesa-utils libgl1-mesa mesa-vulkan-drivers
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    else
+                        if [[$(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://ppa.launchpadcontent.net/graphics-drivers/ppa/ubuntu"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y mesa-utils libgl1-mesa mesa-vulkan-drivers
+                            echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                        else
+                            sudo add-apt-repository ppa:graphics-drivers/ppa
+                            sudo apt-install -y mesa-utils libgl1-mesa mesa-vulkan-drivers
+                            echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            else
+                if [[ $(apt list --installed) == *"nvidia-driver"*"vulkan-utils"*"libvulkan1"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    if [[ $DISTRO_VERSION == *"Debian"* ]]; then
+                        if [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"contrib"* ]] && [[ $(grep ^[^#] /etc/apt/sources.list /etc/apt/sources.list.d/*) == *"non-free"* ]]; then
+                            sudo apt-get update && sudo apt-get install -y software-properties-common
+                            sudo apt-add-repository contrib && sudo apt-add-repository non-free # The package "software-properties-common" must be installed before!
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y nvidia-driver vulkan-utils libvulkan1
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-install -y software-properties-common nvidia-driver vulkan-utils libvulkan1
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    else
+                        if [[$(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://ppa.launchpadcontent.net/graphics-drivers/ppa/ubuntu"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y nvidia-driver vulkan-utils libvulkan1
+                            echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                        else
+                            sudo apt-get purge nvidia*
+                            sudo add-apt-repository ppa:graphics-drivers/ppa
+                            sudo apt-get update && sudo ubuntu-drivers autoinstall
+                            sudo apt-get install -y nvidia-driver vulkan-utils libvulkan1
+                            echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"Fedora"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+            elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+            else
+                if [[ $(sudo dnf list installed) == *"akmod-nvidia"*"xorg-x11-drv-nvidia-cuda"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    if [[ $(sudo dnf repolist all) == *"rpmfusion-free-release"* ]] && [[ $(sudo dnf repolist all) == *"rpmfusion-nonfree-release"* ]]; then
+                        sudo dnf install -y akmod-nvidia xorg-x11-drv-nvidia-cuda
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    else
+                        sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm 
+                        sudo dnf install https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+                        sudo dnf install -y akmod-nvidia xorg-x11-drv-nvidia-cuda
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"Gentoo"*"Linux"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                if [[ $(equery list '*') == *"x11-drivers/xf86-video-amdgpu"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo emerge --ask --quiet x11-drivers/xf86-video-amdgpu
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                if [[ $(equery list '*') == *"x11-drivers/xf86-video-intel"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo emerge --ask --quiet x11-drivers/xf86-video-intel
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            else
+                if [[ $(equery list '*') == *"x11-drivers/nvidia-drivers"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo emerge --ask --quiet x11-drivers/nvidia-drivers
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"nixos"* ]] || [[ $DISTRO_VERSION == *"NixOS"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                if [[ $(nix-env -qa --installed "*") == *"nixos.amdgpu"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo nix-env -iA nixos.amdgpu
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                if [[ $(nix-env -qa --installed "*") == *"nixos.intel-video-acc"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo nix-env -iA nixos.intel-video-acc
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            else
+                if [[ $(nix-env -qa --installed "*") == *"nixos.nvidia"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                    sudo nix-env -iA nixos.nvidia
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"openSUSE"* ]]; then
+            if [[ $DISTRO_VERSION == *"openSUSE"*"15.4"* ]]; then
+                if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-amdgpu"*"libdrm_amdgpu1"*"libdrm_amdgpu1-32bit"*"libdrm_radeon1"*"libdrm_radeon1-32bit"*"libvulkan_radeon"*"libvulkan_radeon-32bit"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-amdgpu libdrm_amdgpu1 libdrm_amdgpu1-32bit libdrm_radeon1 libdrm_radeon1-32bit libvulkan_radeon libvulkan_radeon-32bit libvulkan1 libvulkan1-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-intel"*"libdrm_intel1"*"libdrm_intel1-32bit"*"libvulkan1"*"libvulkan1-32bit"*"libvulkan_intel"*"libvulkan_intel-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-intel libdrm_intel1 libdrm_intel1-32bit libvulkan1 libvulkan1-32bit libvulkan_intel libvulkan_intel-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                else
+                    if [[ $(zypper search --installed-only) == *"x11-video-nvidiaG05"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        if [[ $(zypper lr -u) == *"https://download.nvidia.com/opensuse/leap/15.4/"*]] || [[ $(zypper lr -u) == *"https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.repo"*]]; then
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo zypper addrepo --refresh 'https://download.nvidia.com/opensuse/leap/$releasever' NVIDIA
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            elif [[ $DISTRO_VERSION == *"openSUSE"*"15.5"* ]]; then
+                if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-amdgpu"*"libdrm_amdgpu1"*"libdrm_amdgpu1-32bit"*"libdrm_radeon1"*"libdrm_radeon1-32bit"*"libvulkan_radeon"*"libvulkan_radeon-32bit"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-amdgpu libdrm_amdgpu1 libdrm_amdgpu1-32bit libdrm_radeon1 libdrm_radeon1-32bit libvulkan_radeon libvulkan_radeon-32bit libvulkan1 libvulkan1-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-intel"*"libdrm_intel1"*"libdrm_intel1-32bit"*"libvulkan1"*"libvulkan1-32bit"*"libvulkan_intel"*"libvulkan_intel-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-intel libdrm_intel1 libdrm_intel1-32bit libvulkan1 libvulkan1-32bit libvulkan_intel libvulkan_intel-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                else
+                    if [[ $(zypper search --installed-only) == *"x11-video-nvidiaG05"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        if [[ $(zypper lr -u) == *"https://download.nvidia.com/opensuse/leap/15.5/"*]] || [[ $(zypper lr -u) == *"https://developer.download.nvidia.com/compute/cuda/repos/opensuse15/x86_64/cuda-opensuse15.repo"*]]; then
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo zypper addrepo --refresh 'https://download.nvidia.com/opensuse/leap/$releasever' NVIDIA
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            elif [[ $DISTRO_VERSION == *"openSUSE"*"Tumbleweed"* ]]; then
+                if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-amdgpu"*"libdrm_amdgpu1"*"libdrm_amdgpu1-32bit"*"libdrm_radeon1"*"libdrm_radeon1-32bit"*"libvulkan_radeon"*"libvulkan_radeon-32bit"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-amdgpu libdrm_amdgpu1 libdrm_amdgpu1-32bit libdrm_radeon1 libdrm_radeon1-32bit libvulkan_radeon libvulkan_radeon-32bit libvulkan1 libvulkan1-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    if [[ $(zypper search --installed-only) == *"kernel-firmware-intel"*"libdrm_intel1"*"libdrm_intel1-32bit"*"libvulkan1"*"libvulkan1-32bit"*"libvulkan_intel"*"libvulkan_intel-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        sudo zypper in -y kernel-firmware-intel libdrm_intel1 libdrm_intel1-32bit libvulkan1 libvulkan1-32bit libvulkan_intel libvulkan_intel-32bit
+                        echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                else
+                    if [[ $(zypper search --installed-only) == *"x11-video-nvidiaG05"*"libvulkan1"*"libvulkan1-32bit"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        if [[ $(zypper lr -u) == *"https://download.nvidia.com/opensuse/tumbleweed"*]]; then
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo zypper addrepo --refresh https://download.nvidia.com/opensuse/tumbleweed NVIDIA
+                            sudo zypper in -y x11-video-nvidiaG05 libvulkan1 libvulkan1-32bit
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        fi
+                    fi
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"* ]]; then
+            if [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"*"8"* ]]; then
+                if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                else
+                    if [[ $(dnf list installed) == *"nvidia-driver:latest-dkms"*"cuda"* ]]; then
+                        echo -e "${GREEN}The latest graphics card driver is already installed.${NOCOLOR}"
+                    else
+                        echo -e "${YELLOW}The latest graphics card driver will be installed!${NOCOLOR}"
+                        if [[ $(dnf repolist) == *"https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo"*]]
+                            sudo dnf -y module install nvidia-driver:latest-dkms
+                            sudo dnf -y install cuda
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                        else
+                            sudo dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
+                            sudo dnf clean all
+                            sudo dnf -y module install nvidia-driver:latest-dkms
+                            sudo dnf -y install cuda
+                            echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                    fi
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"Solus"*"Linux"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                else
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+        elif [[ $DISTRO_VERSION == *"Void"*"Linux"* ]]; then
+            if [[ $GPU_DRIVER == *"amd"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                elif [[ $GPU_DRIVER == *"intel"* ]]; then
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+                else
+                    echo -e "${GREEN}The latest graphics card driver is installed!${NOCOLOR}"
+        else
+            echo -e "${YELLOW}The graphics card driver installation has failed!${NOCOLOR}";
+            echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+            exit;
+        fi
 }
 
-# Czech:
-function SP_LOCALE_CS {
-  # shellcheck source=../locale/cs-CZ/locale-cs.sh
-  source "$SP_PATH/locale/cs-CZ/locale-cs.sh"
-}
-
-# German:
-function SP_LOCALE_DE {
-  # shellcheck source=../locale/de-DE/locale-de.sh
-  source "$SP_PATH/locale/de-DE/locale-de.sh"
-}
-
-# English:
-function SP_LOCALE_EN {
-  # shellcheck source=../locale/en-US/locale-en.sh
-  source "$SP_PATH/locale/en-US/locale-en.sh"
-}
-
-# Spanish:
-function SP_LOCALE_ES {
-  # shellcheck source=../locale/es-ES/locale-es.sh
-  source "$SP_PATH/locale/es-ES/locale-es.sh"
-}
-
-# French:
-function SP_LOCALE_FR {
-  # shellcheck source=../locale/fr-FR/locale-fr.sh
-  source "$SP_PATH/locale/fr-FR/locale-fr.sh"
-}
-
-
-# Italian:
-function SP_LOCALE_IT {
-  # shellcheck source=../locale/it-IT/locale-it.sh
-  source "$SP_PATH/locale/it-IT/locale-it.sh"
-}
-
-# Japanese:
-function SP_LOCALE_JA {
-  # shellcheck source=../locale/ja-JP/locale-ja.sh
-  source "$SP_PATH/locale/ja-JP/locale-ja.sh"
-}
-
-# Korean:
-function SP_LOCALE_KO {
-  # shellcheck source=../locale/ko-KR/locale-ko.sh
-  source "$SP_PATH/locale/ko-KR/locale-ko.sh"
-}
-
-# Chinese:
-function SP_LOCALE_ZH {
-  # shellcheck source=../locale/zh-CN/locale-zh.sh
-  source "$SP_PATH/locale/zh-CN/locale-zh.sh"
-}
-
-###############################################################################################################################################################
-
-function SP_LOCALE_SETTINGS {
-SP_LOCALE=$(awk 'NR == 1' /tmp/fusion360/settings.txt)
-if [[ $SP_LOCALE = "Czech" ]]; then
-    echo "CS"
-    SP_LOCALE_CS
-elif [[ $SP_LOCALE = "English" ]]; then
-    echo "EN"
-    SP_LOCALE_EN
-elif [[ $SP_LOCALE = "German" ]]; then
-    echo "DE"
-    SP_LOCALE_DE
-elif [[ $SP_LOCALE = "Spanish" ]]; then
-    echo "ES"
-    SP_LOCALE_ES
-elif [[ $SP_LOCALE = "French" ]]; then
-    echo "FR"
-    SP_LOCALE_FR
-elif [[ $SP_LOCALE = "Italian" ]]; then
-    echo "IT"
-    SP_LOCALE_IT
-elif [[ $SP_LOCALE = "Japanese" ]]; then
-    echo "JP"
-    SP_LOCALE_JA
-elif [[ $SP_LOCALE = "Korean" ]]; then
-    echo "KO"
-    SP_LOCALE_KO
-elif [[ $SP_LOCALE = "Chinese" ]]; then
-    echo "ZH"
-    SP_LOCALE_ZH
-else
-   echo "EN"
-   SP_LOCALE_EN
-fi
-}
-
-###############################################################################################################################################################
-# DONWLOAD WINETRICKS AND AUTODESK FUSION 360:                                                                                                                #
-###############################################################################################################################################################
-
-# Load the newest winetricks version:
-function SP_WINETRICKS_LOAD {
-  wget -N -P "$SP_PATH/bin" https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks
-  chmod +x "$SP_PATH/bin/winetricks"
-}
-
-###############################################################################################################################################################
-
-# Load newest Autodesk Fusion 360 installer version for the Setup Wizard!
-function SP_FUSION360_INSTALLER_LOAD {
-  # Search for a existing installer of Autodesk Fusion 360
-  FUSION360_INSTALLER="$SP_PATH/downloads/Fusion360installer.exe"
-  if [ -f "$FUSION360_INSTALLER" ]; then
-    echo "The Autodesk Fusion 360 installer exist!"
-  else
-    echo "The Autodesk Fusion 360 installer doesn't exist and will be downloaded for you!"
-    wget https://dl.appstreaming.autodesk.com/production/installers/Fusion%20360%20Admin%20Install.exe -O Fusion360installer.exe
-    mv "Fusion360installer.exe" "$SP_PATH/downloads/Fusion360installer.exe"
-  fi
-}
-
-###############################################################################################################################################################
-# ALL FUNCTIONS FOR DESKTOP-FILES START HERE:                                                                                                                 #
-###############################################################################################################################################################
-
-# Load the icons and .desktop-files:
-function SP_FUSION360_SHORTCUTS_LOAD {
-  # Create a .desktop file (launcher.sh) for Autodesk Fusion 360!
-  wget -N -P "$SP_PATH/graphics" https://raw.githubusercontent.com/cryinkfly/Autodesk-Fusion-360-for-Linux/main/files/builds/stable-branch/bin/fusion360.svg
-  rm "$HOME/.local/share/applications/wine/Programs/Autodesk/Autodesk Fusion 360.desktop"
-  mkdir -p "$HOME/.local/share/applications/wine/Programs/Autodesk/Fusion360/$WP_TYPE"
-  cat >> "$HOME/.local/share/applications/wine/Programs/Autodesk/Fusion360/$WP_TYPE/fusion360.desktop" << EOF
-[Desktop Entry]
-Name=Autodesk Fusion 360 - $WP_TYPE
-GenericName=CAD Application
-GenericName[cs]=Aplikace CAD
-GenericName[de]=CAD-Anwendung
-GenericName[es]=Aplicación CAD
-GenericName[fr]=Application CAO
-GenericName[it]=Applicazione CAD
-GenericName[ja]=CADアプリケーション
-GenericName[ko]=CAD 응용
-GenericName[zh_CN]=计算机辅助设计应用
-Comment=Autodesk Fusion 360 is a cloud-based 3D modeling, CAD, CAM, and PCB software platform for product design and manufacturing.
-Comment[cs]=Autodesk Fusion 360 je cloudová platforma pro 3D modelování, CAD, CAM a PCB určená k navrhování a výrobě produktů.
-Comment[de]=Autodesk Fusion 360 ist eine cloudbasierte Softwareplattform für Modellierung, CAD, CAM, CAE und Leiterplatten in 3D für Produktdesign und Fertigung.
-Comment[es]=Autodesk Fusion 360 es una plataforma de software de modelado 3D, CAD, CAM y PCB basada en la nube destinada al diseño y la fabricación de productos.
-Comment[fr]=Autodesk Fusion 360 est une plate-forme logicielle 3D cloud de modélisation, de CAO, de FAO, d’IAO et de conception de circuits imprimés destinée à la conception et à la fabrication de produits.
-Comment[it]=Autodesk Fusion 360 è una piattaforma software di modellazione 3D, CAD, CAM, CAE e PCB basata sul cloud per la progettazione e la realizzazione di prodotti.
-Comment[ja]=Autodesk Fusion 360は、製品の設計と製造のためのクラウドベースの3Dモデリング、CAD、CAM、およびPCBソフトウェアプラットフォームです。
-Comment[ko]=Autodesk Fusion 360은 제품 설계 및 제조를 위한 클라우드 기반 3D 모델링, CAD, CAM 및 PCB 소프트웨어 플랫폼입니다.
-Comment[zh_CN]=Autodesk Fusion 360 是一个基于云的 3D 建模、CAD、CAM 和 PCB 软件平台，用于产品设计和制造。
-Exec=$WP_DIRECTORY/box-run.sh
-Type=Application
-Categories=Education;Engineering;
-StartupNotify=true
-Icon=$SP_PATH/graphics/fusion360.svg
-Terminal=false
-Path=$WP_DIRECTORY
-EOF
-
-  # Create a .desktop file (uninstall.sh) for Autodesk Fusion 360!
-  wget -N -P "$SP_PATH/graphics" https://raw.githubusercontent.com/cryinkfly/Autodesk-Fusion-360-for-Linux/main/files/builds/stable-branch/bin/fusion360-uninstall.svg
-  cat >> "$HOME/.local/share/applications/wine/Programs/Autodesk/Fusion360/$WP_TYPE/fusion360uninstall.desktop" << EOF
-[Desktop Entry]
-Name=Autodesk Fusion 360 (Uninstall) - $WP_TYPE
-Name[cs]=Autodesk Fusion 360 (Odinstalovat) - $WP_TYPE
-Name[de]=Autodesk Fusion 360 (Deinstallieren) - $WP_TYPE
-Name[es]=Autodesk Fusion 360 (Desinstalar) - $WP_TYPE
-Name[fr]=Autodesk Fusion 360 (Désinstaller) - $WP_TYPE
-Name[it]=Autodesk Fusion 360 (Disinstalla) - $WP_TYPE
-Name[ja]=Autodesk Fusion 360 (アンインストール) - $WP_TYPE
-Name[ko]=Autodesk Fusion 360 (제거) - $WP_TYPE
-Name[zh_CN]=Autodesk Fusion 360 (卸载) - $WP_TYPE
-Comment=With this program you can delete Autodesk Fusion 360 on your system!
-Comment[cs]=Pomocí tohoto programu můžete odstranit Autodesk Fusion 360 ze svého systému!
-Comment[de]=Mit diesem Programm können Sie Autodesk Fusion 360 auf Ihrem System löschen!
-Comment[es]=¡Con este programa puede eliminar Autodesk Fusion 360 en su sistema!
-Comment[fr]=Avec ce programme, vous pouvez supprimer Autodesk Fusion 360 sur votre système !
-Comment[it]=Con questo programma puoi eliminare Autodesk Fusion 360 sul tuo sistema!
-Comment[ja]=このプログラムを使用すると、システム上のAutodeskFusion360を削除できます。
-Comment[ko]=이 프로그램을 사용하면 시스템에서 Autodesk Fusion 360을 삭제할 수 있습니다!
-Comment[zh_CN]=使用此程序，您可以删除系统上的 Autodesk Fusion 360！
-Exec=bash ./uninstall.sh
-Type=Application
-Categories=Education;Engineering;
-StartupNotify=true
-Icon=$SP_PATH/graphics/fusion360-uninstall.svg
-Terminal=false
-Path=$SP_PATH/bin
-EOF
-
-  # Create a link to the Wineprefixes Box:
-  cat >> "$WP_DIRECTORY/box-run.sh" << EOF
-#!/bin/bash
-WP_BOX='$WP_DIRECTORY' source $SP_PATH/bin/launcher.sh
-EOF
-  chmod +x "$WP_DIRECTORY/box-run.sh"
-
-  # Download some script files for Autodesk Fusion 360!
-  wget -N -P "$SP_PATH/bin" https://raw.githubusercontent.com/cryinkfly/Autodesk-Fusion-360-for-Linux/main/files/builds/stable-branch/bin/uninstall.sh
-  chmod +x "$SP_PATH/bin/uninstall.sh"
-  wget -N -P "$SP_PATH/bin" https://raw.githubusercontent.com/cryinkfly/Autodesk-Fusion-360-for-Linux/main/files/builds/stable-branch/bin/launcher.sh
-  chmod +x "$SP_PATH/bin/launcher.sh"
-  wget -N -P "$SP_PATH/bin" https://raw.githubusercontent.com/cryinkfly/Autodesk-Fusion-360-for-Linux/main/files/builds/stable-branch/bin/update.sh
-  chmod +x "$SP_PATH/bin/update.sh"
-}
-
-###############################################################################################################################################################
-# ALL FUNCTIONS FOR DXVK AND OPENGL START HERE:                                                                                                               #
-###############################################################################################################################################################
-
-function SP_DXVK_OPENGL_1 {
-  if [[ $WP_DRIVER = "DXVK" ]]; then
-    WINEPREFIX=$WP_DIRECTORY sh "$SP_PATH/bin/winetricks" -q dxvk
-    wget -N -P "$WP_DIRECTORY/drive_c/users/$USER/Downloads" https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/driver/video/dxvk/DXVK.reg
-    # Add the "return"-option. Here you can read more about it -> https://github.com/koalaman/shellcheck/issues/592
-    cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-    WINEPREFIX=$WP_DIRECTORY wine regedit.exe DXVK.reg
-  fi
-}
-
-function SP_DXVK_OPENGL_2 {
-  if [[ $WP_DRIVER = "DXVK" ]]; then
-    wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/driver/video/dxvk/NMachineSpecificOptions.xml
-  else
-    wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/driver/video/opengl/NMachineSpecificOptions.xml
-  fi
-}
-
-###############################################################################################################################################################
-
-function SP_DRIVER_SETTINGS {
-WP_DRIVER=$(awk 'NR == 2' /tmp/fusion360/settings.txt)
-}
-
-###############################################################################################################################################################
-# ALL FUNCTIONS FOR WINE AND WINETRICKS START HERE:                                                                                                           #
-###############################################################################################################################################################
-
-# Start Fusion360installer.exe - Part 1
-function SP_FUSION360_INSTALL_DEFAULT_1 {
-  WINEPREFIX="$WP_DIRECTORY" timeout -k 10m 9m wine "$WP_DIRECTORY/drive_c/users/$USER/Downloads/Fusion360installer.exe"
-}
-
-# Start Fusion360installer.exe - Part 2
-function SP_FUSION360_INSTALL_DEFAULT_2 {
-  WINEPREFIX="$WP_DIRECTORY" timeout -k 5m 4m wine "$WP_DIRECTORY/drive_c/users/$USER/Downloads/Fusion360installer.exe"
-}
-
-###############################################################################################################################################################
-
-# Start Fusion360installer.exe - Part 1 (Refresh)
-function SP_FUSION360_INSTALL_REFRESH_1 {
-  WINEPREFIX="$WP_WINEPREFIXES_REFRESH" timeout -k 10m 9m wine "$WP_WINEPREFIXES_REFRESH/drive_c/users/$USER/Downloads/Fusion360installer.exe"
-}
-
-# Start Fusion360installer.exe - Part 2 (Refresh)
-function SP_FUSION360_INSTALL_REFRESH_2 {
-  WINEPREFIX="$WP_WINEPREFIXES_REFRESH" timeout -k 5m 4m wine "$WP_WINEPREFIXES_REFRESH/drive_c/users/$USER/Downloads/Fusion360installer.exe"
-}
-
-###############################################################################################################################################################
-
-# Autodesk Fusion 360 will now be installed using Wine and Winetricks.
-function SP_FUSION360_INSTALL {
-  SP_WINETRICKS_LOAD
-  SP_FUSION360_INSTALLER_LOAD
-  # Note that the winetricks sandbox verb merely removes the desktop integration and Z: drive symlinks and is not a "true" sandbox.
-  # It protects against errors rather than malice. It's useful for, e.g., keeping games from saving their settings in random subdirectories of your home directory.
-  # But it still ensures that wine, for example, no longer has access permissions to Home!
-  # For this reason, the EXE files must be located directly in the Wineprefix folder!
-  mkdir -p "$WP_DIRECTORY"
-  cd "$WP_DIRECTORY" || return
-  WINEPREFIX="$WP_DIRECTORY" sh "$SP_PATH/bin/winetricks" -q sandbox
-  sleep 5s
-  # We must install some packages!
-  WINEPREFIX="$WP_DIRECTORY" sh "$SP_PATH/bin/winetricks" -q atmlib gdiplus corefonts cjkfonts dotnet452 msxml4 msxml6 vcrun2017 fontsmooth=rgb winhttp win10
-  sleep 5s
-  # We must install cjkfonts again then sometimes it doesn't work in the first time!
-  WINEPREFIX="$WP_DIRECTORY" sh "$SP_PATH/bin/winetricks" -q cjkfonts
-  sleep 5s
-  SP_DXVK_OPENGL_1
-  # We must set to Windows 10 again because some other winetricks sometimes set it back to Windows XP!
-  WINEPREFIX="$WP_DIRECTORY" sh "$SP_PATH/bin/winetricks" -q win10
-  sleep 5s
-  # We must copy the EXE-file directly in the Wineprefix folder (Sandbox-Mode)!
-  cp "$SP_PATH/downloads/Fusion360installer.exe" "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  # This start and stop the installer automatically after a time!
-  # For more information check this link: https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/issues/232
-  SP_FUSION360_INSTALL_PROGRESS
-  mkdir -p "$WP_DIRECTORY/drive_c/users/$USER/AppData/Roaming/Autodesk/Neutron Platform/Options"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/AppData/Roaming/Autodesk/Neutron Platform/Options" || return
-  SP_DXVK_OPENGL_2
-  mkdir -p "$WP_DIRECTORY/drive_c/users/$USER/AppData/Local/Autodesk/Neutron Platform/Options"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/AppData/Local/Autodesk/Neutron Platform/Options" || return
-  SP_DXVK_OPENGL_2
-  mkdir -p "$WP_DIRECTORY/drive_c/users/$USER/Application Data/Autodesk/Neutron Platform/Options"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Application Data/Autodesk/Neutron Platform/Options" || return
-  SP_DXVK_OPENGL_2
-  cd "$SP_PATH/bin" || return
-  SP_GET_WINEPREFIX_TYPE
-  SP_FUSION360_SHORTCUTS_LOAD
-  SP_FUSION360_EXTENSIONS
-  SP_LOGFILE_WINEPREFIX
-  SP_COMPLETED
-}
-
-function SP_FUSION360_REFRESH {
-  wget "$SP_SERVER_21" -O Fusion360installer.exe
-  mv "Fusion360installer.exe" "$SP_PATH/downloads/Fusion360installer.exe"
-  rmdir "$WP_WINEPREFIXES_REFRESH/drive_c/users/$USER/Downloads/Fusion360installer.exe"
-  cp "$SP_PATH/downloads/Fusion360installer.exe" "$WP_WINEPREFIXES_REFRESH/drive_c/users/$USER/Downloads"
-  SP_FUSION360_INSTALL_PROGRESS_REFRESH
-}
-
-###############################################################################################################################################################
-# ALL FUNCTIONS FOR SUPPORTED LINUX DISTRIBUTIONS START HERE:                                                                                                 #
-###############################################################################################################################################################
-
-function OS_ARCHLINUX {
-  echo "Checking for multilib..."
-  if ARCHLINUX_VERIFY_MULTILIB ; then
-    echo "multilib found. Continuing..."
-    pkexec sudo pacman -Sy --needed wine wine-mono wine_gecko winetricks p7zip curl cabextract samba ppp
-    SP_FUSION360_INSTALL
-  else
-    echo "Enabling multilib..."
-    echo "[multilib]" | sudo tee -a /etc/pacman.conf
-    echo "Include = /etc/pacman.d/mirrorlist" | sudo tee -a /etc/pacman.conf
-    pkexec sudo pacman -Sy --needed wine wine-mono wine_gecko winetricks p7zip curl cabextract samba ppp
-    SP_FUSION360_INSTALL
-  fi
-}
-
-function ARCHLINUX_VERIFY_MULTILIB {
-  if grep -q '^\[multilib\]$' /etc/pacman.conf ; then
-    true
-  else
-    false
-  fi
-}
-
-###############################################################################################################################################################
-
-function DEBIAN_BASED_1 {
-  # Some systems require this command for all repositories to work properly and for the packages to be downloaded for installation!
-  pkexec sudo apt-get --allow-releaseinfo-change update
-  # Added i386 support for wine!
-  sudo dpkg --add-architecture i386
-}
-
-function DEBIAN_BASED_2 {
-  sudo apt-get update
-  sudo apt-get install p7zip p7zip-full p7zip-rar curl winbind cabextract wget
-  sudo apt-get install --install-recommends winehq-staging
-  SP_FUSION360_INSTALL
-}
-
-function OS_DEBIAN_10 {
-  sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/debian/ buster main'
-  wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_10//Release.key -O Release.key -O- | sudo apt-key add -
-  sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_10/ ./'
-}
-
-function OS_DEBIAN_11 {
-  sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main'
-  wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_11//Release.key -O Release.key -O- | sudo apt-key add -
-  sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_11/ ./'
-}
-
-function OS_UBUNTU_18 {
-  sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main'
-  wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_18.04/Release.key -O Release.key -O- | sudo apt-key add -
-  sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_18.04/ ./'
-}
-
-function OS_UBUNTU_20 {
-  sudo add-apt-repository -r 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main'
-  wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_20.04/Release.key -O Release.key -O- | sudo apt-key add -
-  sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_20.04/ ./'
-}
-
-function OS_UBUNTU_22 {
-  sudo add-apt-repository -r 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main'
-  wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_22.04/Release.key -O Release.key -O- | sudo apt-key add -
-  sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/xUbuntu_22.04/ ./'
-}
-
-###############################################################################################################################################################
-
-function FEDORA_BASED_1 {
-  pkexec sudo dnf update
-  sudo dnf upgrade
-  sudo dnf install "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
-}
-
-function FEDORA_BASED_2 {
-  sudo dnf install p7zip p7zip-plugins curl wget wine cabextract
-  SP_FUSION360_INSTALL
-}
-
-function OS_FEDORA_35 {
-  sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/Emulators:/Wine:/Fedora/Fedora_35/Emulators:Wine:Fedora.repo
-}
-
-function OS_FEDORA_36 {
-  sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/Emulators:/Wine:/Fedora/Fedora_36/Emulators:Wine:Fedora.repo
-}
-
-###############################################################################################################################################################
-
-function OS_OPENSUSE_153 {
-  pkexec su -c 'zypper up && zypper rr https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.3/ wine && zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.3/ wine && zypper install p7zip-full curl wget wine cabextract'
-  SP_FUSION360_INSTALL
-}
-
-# Has not been published yet!
-function OS_OPENSUSE_154 {
-  pkexec su -c 'zypper up && zypper rr https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.4/ wine && zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.4/ wine && zypper install p7zip-full curl wget wine cabextract'
-  SP_FUSION360_INSTALL
-}
-
-function OS_OPENSUSE_TW {
-  pkexec su -c 'zypper up && zypper rr https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Tumbleweed/ wine && zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Tumbleweed/ wine && zypper install p7zip-full curl wget wine cabextract'
-  SP_FUSION360_INSTALL
-}
-
-###############################################################################################################################################################
-
-function OS_REDHAT_LINUX_8 {
-  pkexec sudo subscription-manager repos --enable codeready-builder-for-rhel-8-x86_64-rpms
-  sudo rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-  sudo dnf upgrade
-  sudo dnf install wine
-  SP_FUSION360_INSTALL
-}
-
-function OS_REDHAT_LINUX_9 {
-  pkexec sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
-  sudo rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-  sudo dnf upgrade
-  sudo dnf install wine
-  SP_FUSION360_INSTALL
-}
-
-###############################################################################################################################################################
-
-function OS_SOLUS_LINUX {
-  pkexec sudo eopkg install -y wine winetricks p7zip curl cabextract samba ppp
-  SP_FUSION360_INSTALL
-}
-
-###############################################################################################################################################################
-
-function OS_VOID_LINUX {
-  pkexec sudo xbps-install -Sy wine wine-mono wine-gecko winetricks p7zip curl cabextract samba ppp
-  SP_FUSION360_INSTALL
-}
-
-###############################################################################################################################################################
-
-function OS_GENTOO_LINUX {
-  pkexec sudo emerge -nav virtual/wine app-emulation/winetricks app-emulation/wine-mono app-emulation/wine-gecko app-arch/p7zip app-arch/cabextract net-misc/curl net-fs/samba net-dialup/ppp
-  SP_FUSION360_INSTALL
-}
-
-###############################################################################################################################################################
-# ALL FUNCTIONS FOR THE EXTENSIONS START HERE:                                                                                                                #
-###############################################################################################################################################################
-
-# Install a extension: Airfoil Tools
-function EXTENSION_AIRFOIL_TOOLS {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Fusion-360---Linux-Wine-Version-/raw/main/files/extensions/AirfoilTools_win64.msi &&
-  cp AirfoilTools_win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX=$WP_DIRECTORY wine msiexec /i AirfoilTools_win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: Additive Assistant (FFF)
-function EXTENSION_ADDITIVE_ASSISTANT {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/AdditiveAssistant.bundle-win64.msi &&
-  cp AdditiveAssistant.bundle-win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX=$WP_DIRECTORY wine msiexec /i AdditiveAssistant.bundle-win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: Czech localization for F360
-function EXTENSION_CZECH_LOCALE {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/Ceska_lokalizace_pro_Autodesk_Fusion_360_v7.exe &&
-  cp "Ceska_lokalizace_pro_Autodesk_Fusion_360_v7.exe" "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine Ceska_lokalizace_pro_Autodesk_Fusion_360_v7.exe
-}
-
-###############################################################################################################################################################
-
-# Install a extension: HP 3D Printers for Autodesk® Fusion 360™
-function EXTENSION_HP_3DPRINTER_CONNECTOR {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/HP_3DPrinters_for_Fusion360-win64.msi &&
-  cp HP_3DPrinters_for_Fusion360-win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i HP_3DPrinters_for_Fusion360-win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: Helical Gear Generator
-function EXTENSION_HELICAL_GEAR_GENERATOR {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/HelicalGear_win64.msi &&
-  cp HelicalGear_win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i HelicalGear_win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: OctoPrint for Autodesk® Fusion 360™
-function EXTENSION_OCTOPRINT {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/OctoPrint_for_Fusion360-win64.msi &&
-  cp OctoPrint_for_Fusion360-win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i OctoPrint_for_Fusion360-win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: Parameter I/O
-function EXTENSION_PARAMETER_IO {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/ParameterIO_win64.msi &&
-  cp ParameterIO_win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i ParameterIO_win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: RoboDK
-function EXTENSION_ROBODK {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/RoboDK.bundle-win64.msi &&
-  cp RoboDK.bundle-win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i RoboDK.bundle-win64.msi
-}
-
-###############################################################################################################################################################
-
-# Install a extension: Ultimaker Digital Factory for Autodesk Fusion 360™
-function EXTENSION_ULTIMAKER_DIGITAL_FACTORY {
-  cd "$SP_PATH/extensions" || return
-  wget -N https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/extensions/Ultimaker_Digital_Factory-win64.msi &&
-  cp Ultimaker_Digital_Factory-win64.msi "$WP_DIRECTORY/drive_c/users/$USER/Downloads"
-  cd "$WP_DIRECTORY/drive_c/users/$USER/Downloads" || return
-  WINEPREFIX="$WP_DIRECTORY" wine msiexec /i Ultimaker_Digital_Factory-win64.msi
-}
+##############################################################################################################################################################################
+# INSTALLATION OF THE PACKAGES OF WINE & WINETRICKS:                                                                                                                         #
+##############################################################################################################################################################################
+
+# ...
 
 ###############################################################################################################################################################
 # ALL DIALOGS ARE ARRANGED HERE:                                                                                                                              #
 ###############################################################################################################################################################
 
+
+
+##############################################################################################################################################################################
+# THE INSTALLATION PROGRAM IS STARTED HERE:                                                                                                                                  #
+##############################################################################################################################################################################
+
+SP_LOAD_COLOR_SHEME
+SP_ADD_DIRECTORIES
+SP_LOG_INSTALLATION
+SP_CHECK_REQUIRED_COMMANDS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###############################################################################################################################################################
+# IMPORTANT NOTICE FOR THE USER:                                                                                                                              #
+###############################################################################################################################################################
+# With the command: "glxinfo | grep -A 10 -B 1 Vendor"                                                                                                        #
+# It automatically detects which graphics card (if AMD, INTEL or NVIDIA) is currently being used for image output and calculation of the applications.        #
+# This means that if two graphics cards are installed, it will be checked which one is being used!                                                            #
+###############################################################################################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###############################################################################################################################################################
+# ALL GRAPHICAL DIALOGUES ARE ARRANGED HERE:                                                                                                                  #
+###############################################################################################################################################################
+
+# Default function to show download progress:
+function SP_DOWNLOAD_FILE {
+    wget -N -P "$SP_DOWNLOAD_FILE_DIRECTORY" --progress=dot "$SP_DOWNLOAD_FILE_URL" 2>&1 |\
+    grep "%" |\
+    sed -u -e "s,\.,,g" | awk '{print $2}' | sed -u -e "s,\%,,g"  | dialog --backtitle "$SP_TITLE" --gauge "$SP_DOWNLOAD_FILE_TEXT" 10 100
+    sleep 1 
+}
+
+###############################################################################################################################################################
+
+# Welcome window for a complete new installation:
 function SP_WELCOME {
-yad \
---form \
---separator="" \
---center \
---height=125 \
---width=750 \
---buttons-layout=center \
---title="$SP_TITLE" \
---field="<big>$SP_SUBTITLE</big>:LBL" \
---field="$SP_WELCOME_LABEL_1:LBL" \
---field="$SP_WELCOME_LABEL_2:LBL" \
---align=center \
---button=gtk-about!!"$SP_WELCOME_TOOLTIP_1":1 \
---button=gtk-preferences!!"$SP_WELCOME_TOOLTIP_2":2 \
---button=gtk-cancel:99 \
---button=gtk-ok:3
+    SP_LOCALE=$(dialog --backtitle "$SP_TITLE" \
+        --title "$SP_WELCOME_SUBTITLE" \
+        --radiolist "$SP_WELCOME_TEXT" 0 0 0 \
+            01 "中文(简体)" off\
+            02 "Čeština" off\
+            03 "English" on\
+            04 "Français" off\
+            05 "Deutsch" off\
+            06 "Italiano" off\
+            07 "日本語" off\
+            08 "한국어" off\
+            09 "Española" off 3>&1 1>&2 2>&3 3>&-;)
 
-ret=$?
-
-# Responses to above button presses are below:
-if [[ $ret -eq 1 ]]; then
-    xdg-open https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux
-    SP_WELCOME
-elif [[ $ret -eq 2 ]]; then
-    SP_SETTINGS
-    SP_LOCALE_SETTINGS
-    SP_DRIVER_SETTINGS
-    SP_WELCOME
-elif [[ $ret -eq 3 ]]; then
-    SP_LICENSE
-fi
+    if [ $PIPESTATUS -eq 0 ]; then
+        SP_CONFIG_LOCALE && SP_LICENSE_SHOW # Shows the user the license agreement.
+    elif [ $PIPESTATUS -eq 1 ]; then
+        SP_LOCALE=$(echo $LANG) && SP_WELCOME_EXIT # Displays a warning to the user whether the program should really be terminated.
+    elif [ $PIPESTATUS -eq 255 ]; then
+        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
+    else
+        exit;
+    fi
 }
 
 ###############################################################################################################################################################
 
-function SP_SETTINGS {
-yad --title="$SP_TITLE" \
---form --separator="," --item-separator="," \
---borders=15 \
---width=550 \
---buttons-layout=center \
---align=center \
---field="<big><b>$SP_SETTINGS_TITLE</b></big>:LBL" \
---field=":LBL" \
---field="$SP_SETTINGS_LABEL_1:LBL" \
---field="$SP_LOCALE_LABEL:CB" \
---field="$WP_DRIVER_LABEL:CB" \
---field="$SP_SETTINGS_LABEL_2:LBL" \
-"" "" "" "$SP_LOCALE_SELECT" "$WP_DRIVER_SELECT" "" | while read line; do
-echo "$line" | awk -F',' '{print $4}' > /tmp/fusion360/settings.txt
-echo "$line" | awk -F',' '{print $5}' >> /tmp/fusion360/settings.txt
-cp "/tmp/fusion360/settings.txt" "$SP_PATH/config"
-done
+function SP_WELCOME_EXIT {
+    dialog --backtitle "$SP_TITLE" \
+        --yesno "$SP_WELCOME_LABEL_1" 0 0
+        response=$?
+        case $response in
+            0) clear && exit;; # Program has been terminated manually!
+            1) SP_WELCOME;; # Go back to the welcome window!
+            255) echo "[ESC] key pressed.";; # Program has been terminated manually! <-- Replace with a GUI!
+        esac
 }
 
 ###############################################################################################################################################################
 
-function SP_LICENSE {
-SP_LICENSE_TEXT=$(cat "$SP_LICENSE")
-SP_LICENSE_CHECK=$(yad \
---title="$SP_TITLE" \
---form \
---borders=15 \
---width=550 \
---height=450 \
---buttons-layout=center \
---align=center \
---field=":TXT" "$SP_LICENSE_TEXT" \
---field="$SP_LICENSE_CHECK_LABEL:CHK" )
+function SP_LICENSE_SHOW {
+    SP_LICENSE_CHECK=$(dialog --backtitle "$SP_TITLE" \
+        --title "$SP_LICENSE_SHOW_SUBTITLE" \
+        --checklist "`cat $SP_LICENSE_FILE`" 0 0 0 \
+            "$SP_LICENSE_SHOW_TEXT_1" "$SP_LICENSE_SHOW_TEXT_2" off 3>&1 1>&2 2>&3 3>&-;)
+            
+    if [ $PIPESTATUS -eq 0 ]; then
+        SP_LICENSE_CHECK_STATUS
+    elif [ $PIPESTATUS -eq 1 ]; then
+        SP_WELCOME
+    elif [ $PIPESTATUS -eq 255 ]; then
+        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
+    else
+        exit;
+    fi
+} 
 
-if [[ $SP_LICENSE_CHECK = *"TRUE"* ]]; then
-    echo "TRUE"
-    SP_LOGFILE_WINEPREFIX_CHECK
-else
-    echo "FALSE"
-    SP_WELCOME
-fi
+###############################################################################################################################################################
+
+function SP_SHOW_LICENSE_WARNING {
+    dialog --backtitle "$SP_TITLE" \
+        --yesno "$SP_LICENSE_WARNING_TEXT" 0 0
+        response=$?
+        case $response in
+            0) SP_LICENSE_SHOW;; # Open the next dialog for accept the license.
+            1) exit;; # Program has been terminated manually!
+            255) echo "[ESC] key pressed.";; # Program has been terminated manually! <-- Replace with a GUI!
+        esac
 }
 
 ###############################################################################################################################################################
 
-function SP_LOGFILE_WINEPREFIX_INFO {
-yad \
---form \
---separator="" \
---center \
---height=125 \
---width=750 \
---buttons-layout=center \
---title="$SP_TITLE" \
---field="<big>$SP_LOGFILE_WINEPREFIX_INFO_TITLE</big>:LBL" \
---field="$SP_LOGFILE_WINEPREFIX_INFO_LABEL_1:LBL" \
---field="$SP_LOGFILE_WINEPREFIX_INFO_LABEL_2:LBL" \
---align=center \
---button=gtk-new!!"$SP_LOGFILE_WINEPREFIX_INFO_TOOLTIP_1":1 \
---button=gtk-refresh!!"$SP_LOGFILE_WINEPREFIX_INFO_TOOLTIP_2":2 \
---button=gtk-delete!!"$SP_LOGFILE_WINEPREFIX_INFO_TOOLTIP_3":3 \
---button=gtk-cancel:99
-
-ret=$?
-
-# Responses to above button presses are below:
-if [[ $ret -eq 1 ]]; then
-    SP_INSTALLDIR
-elif [[ $ret -eq 2 ]]; then
-    # Get informations about the current wineprefix - Repair
-    WP_WINEPREFIXES_STRING=$(yad --height=300 --separator="" --list --radiolist --column="$SELECT" --column="$WINEPREFIXES_TYPE" --column="$WINEPREFIXES_DRIVER" --column="$WINEPREFIXES_DIRECTORY" < /tmp/fusion360/logs/wineprefixes.log)
-    WP_WINEPREFIXES_REFRESH=${WP_WINEPREFIXES_STRING/#TRUE}
-    SP_FUSION360_REFRESH
-elif [[ $ret -eq 3 ]]; then
-    # Get informations about the current wineprefix - Delete
-    # shellcheck source=./uninstall.sh
-    source "$SP_PATH/bin/uninstall.sh"
-fi
+function SP_SELECT_OS_VERSION {
+    SP_OS_VERSION=$(dialog --backtitle "$SP_TITLE" \
+        --title "$SP_SELECT_OS_VERSION_SUBTITLE" \
+        --radiolist "$SP_SELECT_OS_VERSION_TEXT" 0 0 0 \
+            01 "Arch Linux" off\
+            02 "Debian" off\
+            03 "EndeavourOS" off\
+            04 "Fedora" off\
+            05 "Linux Mint" off\
+            06 "Manjaro Linux" off\
+            07 "openSUSE Leap & TW" off\
+            08 "Red Hat Enterprise Linux" off\
+            09 "Solus" off\
+            10 "Ubuntu" off\
+            11 "Void Linux" off\
+            12 "Gentoo Linux" off 3>&1 1>&2 2>&3 3>&-)
+            
+    if [ $PIPESTATUS -eq 0 ]; then
+        SP_CHECK_REQUIRED_WINE_VERSION
+    elif [ $PIPESTATUS -eq 1 ]; then
+        SP_LICENSE_SHOW
+    elif [ $PIPESTATUS -eq 255 ]; then
+        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
+    else
+        exit;
+    fi
 }
 
 ###############################################################################################################################################################
 
-function SP_INSTALLDIR {
-WP_DIRECTORY=$(yad --title="$SP_TITLE" \
---form --separator="" \
---borders=15 \
---width=550 \
---buttons-layout=center \
---align=center \
---field="<big><b>$SP_INSTALLDIR_TITLE</b></big>:LBL" \
---field=":LBL" \
---field="<b>$SP_INSTALLDIR_LABEL_1</b>:LBL" \
---field="$SP_INSTALLDIR_LABEL_2:DIR" \
---field="<b>$SP_INSTALLDIR_LABEL_3</b>:LBL" \
-"" "" "" "$SP_PATH/wineprefixes/default" "" )
 
-# Continue with the installation ...
-SP_INSTALLDIR_CHECK
-}
 
-###############################################################################################################################################################
 
-function SP_INSTALLDIR_INFO {
-yad \
---form \
---separator="" \
---center \
---height=125 \
---width=750 \
---buttons-layout=center \
---title="$SP_TITLE" \
---field="<big>$SP_INSTALLDIR_INFO_TITLE</big>:LBL" \
---field="$SP_INSTALLDIR_INFO_LABEL_1:LBL" \
---field="$SP_INSTALLDIR_INFO_LABEL_2:LBL" \
---align=center \
---button=gtk-cancel:99 \
---button=gtk-ok:1
 
-ret=$?
 
-# Responses to above button presses are below:
-if [[ $ret -eq 1 ]]; then
-    SP_INSTALLDIR
-fi
-}
 
-###############################################################################################################################################################
-
-function SP_WINE_SETTINGS {
-WINE_VERSION=$(yad --title="$SP_TITLE" \
---form --separator="" --item-separator="," \
---borders=15 \
---width=550 \
---buttons-layout=center \
---align=center \
---field="<big><b>$SP_WINE_SETTINGS_TITLE</b></big>:LBL" \
---field=":LBL" \
---field="<b>$SP_WINE_SETTINGS_LABEL_1</b>:LBL" \
---field="$SP_WINE_SETTINGS_LABEL_2:CB" \
---field="<b>$SP_WINE_SETTINGS_LABEL_3</b>:LBL" \
-"" "" "" "$SP_WINE_VERSION_SELECT" "" )
-
-# Czech:
-if [[ $WINE_VERSION = "Verze vína (Staging)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# German:
-elif [[ $WINE_VERSION = "Wine Version (Entwicklungsversion)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# English:
-elif [[ $WINE_VERSION = "Wine Version (Staging)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# Spanish:
-elif [[ $WINE_VERSION = "Versión Vino (Puesta en Escena)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# French:
-elif [[ $WINE_VERSION = "Version Vin (Mise en scène)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# Italian:
-elif [[ $WINE_VERSION = "Versione vino (messa in scena)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# Japanese:
-elif [[ $WINE_VERSION = "ワインバージョン（ステージング）" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# Korean:
-elif [[ $WINE_VERSION = "와인 버전(스테이징)" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-# Chinese:
-elif [[ $WINE_VERSION = "葡萄酒版（分期）" ]]; then
-    echo "Install Wine on your system!"
-    SP_OS_SETTINGS
-else
-    echo "Wine version (6.23 or higher) is already installed on the system!"
-    SP_FUSION360_INSTALL
-fi
-}
-
-###############################################################################################################################################################
-
-function SP_OS_SETTINGS {
-SP_OS=$(yad --title="$SP_TITLE" \
---form --separator="" --item-separator="," \
---borders=15 \
---width=550 \
---buttons-layout=center \
---align=center \
---field="<big><b>$SP_OS_TITLE</b></big>:LBL" \
---field=":LBL" \
---field="$SP_OS_LABEL_1:LBL" \
---field="$SP_OS_LABEL_2:CB" \
-"" "" "" "$SP_OS_SELECT" )
-
-if [[ $SP_OS = "Arch Linux" ]]; then
-    echo "Arch Linux"
-    OS_ARCHLINUX
-elif [[ $SP_OS = "Debian 10" ]]; then
-    echo "Debian 10"
-    DEBIAN_BASED_1
-    OS_DEBIAN_10
-    DEBIAN_BASED_1
-elif [[ $SP_OS = "Debian 11" ]]; then
-    echo "Debian 11"
-    DEBIAN_BASED_1
-    OS_DEBIAN_11
-    DEBIAN_BASED_1
-elif [[ $SP_OS = "EndeavourOS" ]]; then
-    echo "EndeavourOS"
-    OS_ARCHLINUX
-elif [[ $SP_OS = "Fedora 35" ]]; then
-    echo "Fedora 35"
-    FEDORA_BASED_1
-    OS_FEDORA_35
-    FEDORA_BASED_2
-elif [[ $SP_OS = "Fedora 36" ]]; then
-    echo "Fedora 36"
-    FEDORA_BASED_1
-    OS_FEDORA_36
-    FEDORA_BASED_2
-elif [[ $SP_OS = "Linux Mint 19.x" ]]; then
-    echo "Linux Mint 19.x"
-    DEBIAN_BASED_1
-    OS_UBUNTU_18
-    DEBIAN_BASED_2
-elif [[ $SP_OS = "Linux Mint 20.x" ]]; then
-    echo "Linux Mint 20.x"
-    DEBIAN_BASED_1
-    OS_UBUNTU_20
-    DEBIAN_BASED_1
-elif [[ $SP_OS = "Linux Mint 21.x" ]]; then
-    echo "Linux Mint 21.x"
-    DEBIAN_BASED_1
-    OS_UBUNTU_22
-    DEBIAN_BASED_1
-elif [[ $SP_OS = "Manjaro Linux" ]]; then
-    echo "Manjaro Linux"
-    OS_ARCHLINUX
-elif [[ $SP_OS = "openSUSE Leap 15.3" ]]; then
-    echo "openSUSE Leap 15.3"
-    OS_OPENSUSE_153
-elif [[ $SP_OS = "openSUSE Leap 15.4" ]]; then
-    echo "openSUSE Leap 15.4"
-    OS_OPENSUSE_154
-elif [[ $SP_OS = "openSUSE Tumbleweed" ]]; then
-    echo "openSUSE Tumbleweed"
-    OS_OPENSUSE_TW
-elif [[ $SP_OS = "Red Hat Enterprise Linux 8.x" ]]; then
-    echo "Red Hat Enterprise Linux 8.x"
-    OS_REDHAT_LINUX_8
-elif [[ $SP_OS = "Red Hat Enterprise Linux 9.x" ]]; then
-    echo "Red Hat Enterprise Linux 9.x"
-    OS_REDHAT_LINUX_9
-elif [[ $SP_OS = "Solus" ]]; then
-    echo "Solus"
-    OS_SOLUS_LINUX
-elif [[ $SP_OS = "Ubuntu 18.04" ]]; then
-    echo "Ubuntu 18.04"
-    DEBIAN_BASED_1
-    OS_UBUNTU_18
-    DEBIAN_BASED_2
-elif [[ $SP_OS = "Ubuntu 20.04" ]]; then
-    echo "Ubuntu 20.04"
-    DEBIAN_BASED_1
-    OS_UBUNTU_20
-    DEBIAN_BASED_2
-elif [[ $SP_OS = "Ubuntu 22.04" ]]; then
-    echo "Ubuntu 22.04"
-    DEBIAN_BASED_1
-    OS_UBUNTU_22
-    DEBIAN_BASED_2
-elif [[ $SP_OS = "Void Linux" ]]; then
-    echo "Void Linux"
-    OS_VOID_LINUX
-elif [[ $SP_OS = "Gentoo Linux" ]]; then
-    echo "Gentoo Linux"
-    OS_GENTOO_LINUX
-fi
-}
-
-###############################################################################################################################################################
-
-function SP_FUSION360_INSTALL_PROGRESS {
-
-SP_FUSION360_INSTALL_PROGRESS_MAIN () {
-cd "$WP_DIRECTORY" || return
-echo "20"
-SP_FUSION360_INSTALL_DEFAULT_1
-echo "70"
-SP_FUSION360_INSTALL_DEFAULT_2
-sleep 5
-echo "100"
-}
-
-SP_FUSION360_INSTALL_PROGRESS_MAIN | yad --progress --progress-text "$SP_INSTALL_PROGRESS_LABEL" --percentage=0 --auto-close
-}
-
-###############################################################################################################################################################
-
-function SP_FUSION360_INSTALL_PROGRESS_REFRESH {
-
-SP_FUSION360_INSTALL_PROGRESS_MAIN_REFRESH () {
-cd "$WP_DIRECTORY" || return
-echo "20"
-SP_FUSION360_INSTALL_REFRESH_1
-echo "70"
-SP_FUSION360_INSTALL_REFRESH_2
-sleep 5
-echo "100"
-}
-
-SP_FUSION360_INSTALL_PROGRESS_MAIN_REFRESH | yad --title="$SP_TITLE" --borders=15 --progress --progress-text "$SP_INSTALL_PROGRESS_REFRESH_LABEL" --percentage=0 --auto-close
-}
-
-###############################################################################################################################################################
-
-function SP_FUSION360_EXTENSIONS {
-EXTENSIONS=$(yad --title="$SP_TITLE" --borders=15 --button=gtk-cancel:99 --button=gtk-ok:0 --height=300 --list --multiple --checklist --column="$SP_EXTENSION_SELECT" --column="$SP_EXTENSION_NAME" --column="$SP_EXTENSION_DESCRIPTION" < "$SP_EXTENSION_LIST")
-
-if [[ $EXTENSIONS = *"Airfoil Tools"* ]]; then
-    echo "Airfoil Tools"
-    EXTENSION_AIRFOIL_TOOLS
-fi
-
-if [[ $EXTENSIONS = *"Additive Assistant (FFF)"* ]]; then
-    echo "Additive Assistant (FFF)"
-    EXTENSION_ADDITIVE_ASSISTANT
-fi
-
-if [[ $EXTENSIONS = *"Czech localization for F360"* ]]; then
-    echo "Czech localization for F360"
-    EXTENSION_CZECH_LOCALE
-fi
-
-if [[ $EXTENSIONS = *"HP 3D Printers for Autodesk® Fusion 360™"* ]]; then
-    echo "HP 3D Printers for Autodesk® Fusion 360™"
-    EXTENSION_HP_3DPRINTER_CONNECTOR
-fi
-
-if [[ $EXTENSIONS = *"Helical Gear Generator"* ]]; then
-    echo "Helical Gear Generator"
-    EXTENSION_HELICAL_GEAR_GENERATOR
-fi
-
-if [[ $EXTENSIONS = *"OctoPrint for Autodesk® Fusion 360™"* ]]; then
-    echo "OctoPrint for Autodesk® Fusion 360™"
-    EXTENSION_OCTOPRINT
-fi
-
-if [[ $EXTENSIONS = *"Parameter I/O"* ]]; then
-    echo "Parameter I/O"
-    EXTENSION_PARAMETER_IO
-fi
-
-if [[ $EXTENSIONS = *"RoboDK"* ]]; then
-    echo "RoboDK"
-    EXTENSION_ROBODK
-fi
-
-if [[ $EXTENSIONS = *"Ultimaker Digital Factory for Autodesk Fusion 360™"* ]]; then
-    echo "Ultimaker Digital Factory for Autodesk Fusion 360™"
-    EXTENSION_ULTIMAKER_DIGITAL_FACTORY
-fi
-}
-
-###############################################################################################################################################################
-
-# The installation is complete and will be terminated.
-function SP_COMPLETED {
-  echo "The installation is completed!"
-  SP_COMPLETED_CHECK=$(yad \
-  --title="$SP_TITLE" \
-  --form \
-  --borders=15 \
-  --width=550 \
-  --height=450 \
-  --buttons-layout=center \
-  --align=center \
-  --field=":TXT" "$SP_COMPLETED_TEXT" \
-  --field="$SP_COMPLETED_CHECK_LABEL:CHK" )
-
-  if [[ $SP_COMPLETED_CHECK = *"TRUE"* ]]; then
-    echo "TRUE"
-    # shellcheck source=/dev/null
-    source "$WP_DIRECTORY/box-run.sh"
-  else
-    echo "FALSE"
-  fi
-}
 
 ###############################################################################################################################################################
 # THE INSTALLATION PROGRAM IS STARTED HERE:                                                                                                                   #
 ###############################################################################################################################################################
 
-SP_CHECK_REQUIRED_COMMANDS
-SP_STRUCTURE
-SP_LOGFILE_INSTALL
-SP_LOCALE_INDEX
-SP_WELCOME
+# ...
