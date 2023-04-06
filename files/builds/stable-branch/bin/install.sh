@@ -754,9 +754,66 @@ function SP_CHECK_WINE_VERSION {
                 echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
             fi
         elif [[ $DISTRO_VERSION == *"openSUSE"* ]]; then
-            # ...
+            if [[ $(zypper search --installed-only) == *"p7zip-full"*"curl"*"wine"*"cabextract"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                if [[ $DISTRO_VERSION == *"openSUSE"*"15.4"* ]]; then
+                    if [[ $(zypper lr -u) == *"https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.4/"*]]
+                        sudo zypper install -y p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.4/ wine
+                        sudo zypper install p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                elif [[ $DISTRO_VERSION == *"openSUSE"*"15.5"* ]]; then
+                    if [[ $(zypper lr -u) == *"https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.5/"*]]
+                        sudo zypper install -y p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Leap_15.5/ wine
+                        sudo zypper install p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                elif [[ $DISTRO_VERSION == *"openSUSE"*"Tumbleweed"* ]]; then
+                    if [[ $(zypper lr -u) == *"https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Tumbleweed/"*]]
+                        sudo zypper install -y p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo zypper ar -cfp 95 https://download.opensuse.org/repositories/Emulators:/Wine/openSUSE_Tumbleweed/ wine
+                        sudo zypper install p7zip-full curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                else
+                    echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}"; 
+                    echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+                    exit;
+                fi
+            fi
         elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"* ]]; then
-            # ...
+            if [[ $(dnf list installed) == *"curl"*"cabextract"*"wine"*"p7zip"*"p7zip-plugins"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                if [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"*"8"* ]]; then
+                    sudo subscription-manager repos --enable codeready-builder-for-rhel-8-x86_64-rpms
+                    sudo rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+                    sudo dnf update && sudo dnf upgrade
+                    sudo dnf install curl cabextract p7zip p7zip-plugins wine
+                    echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"*"9"* ]]; then
+                    sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
+                    sudo rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+                    sudo dnf update && sudo dnf upgrade
+                    sudo dnf install curl cabextract p7zip p7zip-plugins wine
+                    echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                else
+                    echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}"; 
+                    echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+                    exit;
+                fi
+            fi
         elif [[ $DISTRO_VERSION == *"Solus"*"Linux"* ]]; then
             if [[ $(eopkg li -l) == *"wine"*"winetricks"*"p7zip"*"curl"*"cabextract"*"samba"*"ppp"* ]]; then
                 echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
