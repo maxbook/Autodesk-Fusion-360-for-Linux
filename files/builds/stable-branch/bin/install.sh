@@ -61,9 +61,7 @@ function SP_CHECK_REQUIRED_PACKAGES {
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
             SP_DOWNLOAD_LOCALE_INDEX
             SP_CONFIG_LOCALE
-            SP_CHECK_RAM
-            SP_CHECK_VRAM
-            SP_CHECK_DISC_SPACE
+            SP_WELCOME
         else
             clear
             echo -e "${RED}The required packages not installed or founded on your system!${NOCOLOR}"
@@ -72,9 +70,9 @@ function SP_CHECK_REQUIRED_PACKAGES {
 	            y ) SP_INSTALL_REQUIRED_PACKAGES;
 	                SP_REQUIRED_COMMANDS;;
 	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
-		        exit;;
+		            exit;;
 	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
-		        exit 1;;
+		            exit 1;;
             esac
         fi
     done;
@@ -136,9 +134,10 @@ function SP_INSTALL_REQUIRED_PACKAGES {
 ##############################################################################################################################################################################
 
 function SP_DOWNLOAD_LOCALE_INDEX {   
-    wget -N -P "$SP_PATH/locale" --progress=dot "https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/locale/locale.sh" 2>&1 |\
-    grep "%" |\
-    sed -u -e "s,\.,,g" | awk '{print $2}' | sed -u -e "s,\%,,g"  | dialog --backtitle "$SP_TITLE" --gauge "Downloading the language index file ..." 10 100
+    SP_DOWNLOADER_FILE_URL="https://github.com/cryinkfly/Autodesk-Fusion-360-for-Linux/raw/main/files/builds/stable-branch/locale/locale.sh"
+    SP_DOWNLOADER_SUBTITLE="Automatic initial language configuration"
+    SP_DOWNLOADER_TEXT="Downloading the language files ..."
+    SP_DOWNLOADER
     chmod +x "$SP_PATH/locale/locale.sh"
     sleep 1
     source "$SP_PATH/locale/locale.sh" # shellcheck source=../locale/locale.sh
@@ -247,6 +246,12 @@ function SP_CHECK_DISK_SPACE {
 ##############################################################################################################################################################################
 # CHECK THE GRAPHICS CARD DRIVER:                                                                                                                                            #
 ##############################################################################################################################################################################
+
+###############################################################################################################################################################
+# With the command: "glxinfo | grep -A 10 -B 1 Vendor"                                                                                                        #
+# It automatically detects which graphics card (if AMD, INTEL or NVIDIA) is currently being used for image output and calculation of the applications.        #
+# This means that if two graphics cards are installed, it will be checked which one is connected to display or is primarily used!                             #
+###############################################################################################################################################################
 
 function SP_CHECK_GPU_DRIVER {
     if [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"AMD"* ]]; then
@@ -608,10 +613,10 @@ function SP_INSTALL_GPU_DRIVER {
 }
 
 ##############################################################################################################################################################################
-# INSTALLATION OF THE PACKAGES OF WINE & WINETRICKS:                                                                                                                         #
+# INSTALLATION OF THE REQUIRED PACKAGES FOR WINE:                                                                                                                            #
 ##############################################################################################################################################################################
 
-function SP_CHECK_WINE_VERSION {    
+function SP_CHECK_INSTALL_WINE_VERSION {    
     DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
         if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]] || [[ $DISTRO_VERSION == *"Manjaro"*"Linux"* ]]; then
             if [[ $(pacman -Qe) == *"wine"*"wine-mono"*"wine_gecko"*"winetricks"*"p7zip"*"curl"*"cabextract"*"samba"*"ppp"* ]]; then
@@ -837,86 +842,24 @@ function SP_CHECK_WINE_VERSION {
         fi
 }
 
-###############################################################################################################################################################
-# ALL DIALOGS ARE ARRANGED HERE:                                                                                                                              #
-###############################################################################################################################################################
-
-
+#####################################################################################################################################################################################################################
+# ALL DIALOGS ARE ARRANGED HERE:                                                                                                                                                                                    #
+#####################################################################################################################################################################################################################
 
 ##############################################################################################################################################################################
-# THE INSTALLATION PROGRAM IS STARTED HERE:                                                                                                                                  #
+# DOWNLOADER - DIALOG:                                                                                                                                                         #
 ##############################################################################################################################################################################
 
-SP_LOAD_COLOR_SHEME
-SP_ADD_DIRECTORIES
-SP_LOG_INSTALLATION
-SP_CHECK_REQUIRED_COMMANDS
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###############################################################################################################################################################
-# IMPORTANT NOTICE FOR THE USER:                                                                                                                              #
-###############################################################################################################################################################
-# With the command: "glxinfo | grep -A 10 -B 1 Vendor"                                                                                                        #
-# It automatically detects which graphics card (if AMD, INTEL or NVIDIA) is currently being used for image output and calculation of the applications.        #
-# This means that if two graphics cards are installed, it will be checked which one is being used!                                                            #
-###############################################################################################################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###############################################################################################################################################################
-# ALL GRAPHICAL DIALOGUES ARE ARRANGED HERE:                                                                                                                  #
-###############################################################################################################################################################
-
-# Default function to show download progress:
-function SP_DOWNLOAD_FILE {
-    wget -N -P "$SP_DOWNLOAD_FILE_DIRECTORY" --progress=dot "$SP_DOWNLOAD_FILE_URL" 2>&1 |\
+function SP_DOWNLOADER {
+    wget -N -P "$SP_PATH/locale" --progress=dot "$SP_DOWNLOADER_FILE_URL" 2>&1 |\
     grep "%" |\
-    sed -u -e "s,\.,,g" | awk '{print $2}' | sed -u -e "s,\%,,g"  | dialog --backtitle "$SP_TITLE" --gauge "$SP_DOWNLOAD_FILE_TEXT" 10 100
-    sleep 1 
+    sed -u -e "s,\.,,g" | awk '{print $2}' | sed -u -e "s,\%,,g"  | dialog --backtitle "$SP_TITLE" --title "$SP_DOWNLOADER_SUBTITLE" --gauge "$SP_DOWNLOADER_TEXT" 10 100
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# WELCOME - DIALOGS:                                                                                                                                                           #
+##############################################################################################################################################################################
 
-# Welcome window for a complete new installation:
 function SP_WELCOME {
     SP_LOCALE=$(dialog --backtitle "$SP_TITLE" \
         --title "$SP_WELCOME_SUBTITLE" \
@@ -932,17 +875,18 @@ function SP_WELCOME {
             09 "Española" off 3>&1 1>&2 2>&3 3>&-;)
 
     if [ $PIPESTATUS -eq 0 ]; then
-        SP_CONFIG_LOCALE && SP_LICENSE_SHOW # Shows the user the license agreement.
+        SP_CONFIG_LOCALE && SP_SHOW_LICENSE # Shows the user the license agreement.
     elif [ $PIPESTATUS -eq 1 ]; then
-        SP_LOCALE=$(echo $LANG) && SP_WELCOME_EXIT # Displays a warning to the user whether the program should really be terminated.
+        SP_LOCALE=$(echo $LANG) && SP_CONFIG_LOCALE && SP_WELCOME_EXIT # Displays a warning to the user whether the program should really be terminated.
     elif [ $PIPESTATUS -eq 255 ]; then
-        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
+        echo -e "${RED}[ESC] key pressed!${NOCOLOR}" # Program has been terminated manually!
     else
+        echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}"
         exit;
     fi
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
 
 function SP_WELCOME_EXIT {
     dialog --backtitle "$SP_TITLE" \
@@ -951,83 +895,70 @@ function SP_WELCOME_EXIT {
         case $response in
             0) clear && exit;; # Program has been terminated manually!
             1) SP_WELCOME;; # Go back to the welcome window!
-            255) echo "[ESC] key pressed.";; # Program has been terminated manually! <-- Replace with a GUI!
+            255) echo -e "${RED}[ESC] key pressed!${NOCOLOR}";; # Program has been terminated manually!
+            *) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}" && exit 1;;
         esac
 }
 
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# LICENSE - DIALOGS:                                                                                                                                                           #
+##############################################################################################################################################################################
 
-function SP_LICENSE_SHOW {
-    SP_LICENSE_CHECK=$(dialog --backtitle "$SP_TITLE" \
-        --title "$SP_LICENSE_SHOW_SUBTITLE" \
-        --checklist "`cat $SP_LICENSE_FILE`" 0 0 0 \
-            "$SP_LICENSE_SHOW_TEXT_1" "$SP_LICENSE_SHOW_TEXT_2" off 3>&1 1>&2 2>&3 3>&-;)
-            
-    if [ $PIPESTATUS -eq 0 ]; then
-        SP_LICENSE_CHECK_STATUS
-    elif [ $PIPESTATUS -eq 1 ]; then
-        SP_WELCOME
-    elif [ $PIPESTATUS -eq 255 ]; then
-        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
-    else
-        exit;
-    fi
-} 
-
-###############################################################################################################################################################
-
-function SP_SHOW_LICENSE_WARNING {
+function SP_SHOW_LICENSE {
     dialog --backtitle "$SP_TITLE" \
-        --yesno "$SP_LICENSE_WARNING_TEXT" 0 0
+        --yesno "`cat $SP_LICENSE_FILE`" 0 0
         response=$?
         case $response in
-            0) SP_LICENSE_SHOW;; # Open the next dialog for accept the license.
+            0) SP_SELECT_OS_VERSION;; # Open the next dialog window for selecting the correct Linux distribution.
+            1) SP_SHOW_LICENSE_EXIT;; #Displays an error message that the license terms have not been accepted and warning the user whether the program should really be terminated!
+            255) echo -e "${RED}[ESC] key pressed!${NOCOLOR}";; # Program has been terminated manually!
+            *) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}" && exit 1;;
+        esac
+} 
+
+##############################################################################################################################################################################
+
+function SP_SHOW_LICENSE_EXIT {
+    dialog --backtitle "$SP_TITLE" \
+        --yesno "$SP_LICENSE_EXIT_TEXT" 0 0
+        response=$?
+        case $response in
+            0) SP_SHOW_LICENSE;; # Open the next dialog for accept the license.
             1) exit;; # Program has been terminated manually!
-            255) echo "[ESC] key pressed.";; # Program has been terminated manually! <-- Replace with a GUI!
+            255) echo -e "${RED}[ESC] key pressed!${NOCOLOR}";; # Program has been terminated manually!
+            *) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}" && exit 1;;
         esac
 }
 
-###############################################################################################################################################################
-
-function SP_SELECT_OS_VERSION {
-    SP_OS_VERSION=$(dialog --backtitle "$SP_TITLE" \
-        --title "$SP_SELECT_OS_VERSION_SUBTITLE" \
-        --radiolist "$SP_SELECT_OS_VERSION_TEXT" 0 0 0 \
-            01 "Arch Linux" off\
-            02 "Debian" off\
-            03 "EndeavourOS" off\
-            04 "Fedora" off\
-            05 "Linux Mint" off\
-            06 "Manjaro Linux" off\
-            07 "openSUSE Leap & TW" off\
-            08 "Red Hat Enterprise Linux" off\
-            09 "Solus" off\
-            10 "Ubuntu" off\
-            11 "Void Linux" off\
-            12 "Gentoo Linux" off 3>&1 1>&2 2>&3 3>&-)
-            
-    if [ $PIPESTATUS -eq 0 ]; then
-        SP_CHECK_REQUIRED_WINE_VERSION
-    elif [ $PIPESTATUS -eq 1 ]; then
-        SP_LICENSE_SHOW
-    elif [ $PIPESTATUS -eq 255 ]; then
-        echo "[ESC] key pressed." # Program has been terminated manually! <-- Replace with a GUI!
-    else
-        exit;
-    fi
-}
-
-###############################################################################################################################################################
-
-
-
-
-
-
-
-
-###############################################################################################################################################################
-# THE INSTALLATION PROGRAM IS STARTED HERE:                                                                                                                   #
-###############################################################################################################################################################
+##############################################################################################################################################################################
+# AUTOMATIC SYSTEM ANALYSIS (RAM, VRAM, ...) AND INSTALLATION OF PACKAGES (GPU-DRIVER & WINE) - DIALOGS                                                                      #
+##############################################################################################################################################################################
 
 # ...
+
+##############################################################################################################################################################################
+# INSTALLATION OF WINEPREFIXES - DIALOGS                                                                                                                                     #
+##############################################################################################################################################################################
+
+# ...
+
+##############################################################################################################################################################################
+# EXTENSIONS - DIALOGS                                                                                                                                                       #
+##############################################################################################################################################################################
+
+# ...
+
+##############################################################################################################################################################################
+# INSTALLATION COMPLETE - DIALOGS                                                                                                                                            #
+##############################################################################################################################################################################
+
+# ...
+
+#####################################################################################################################################################################################################################
+# THE INSTALLATION PROGRAM IS STARTED HERE:                                                                                                                                                                         #
+#####################################################################################################################################################################################################################
+
+SP_LOAD_COLOR_SHEME
+SP_ADD_DIRECTORIES
+SP_LOG_INSTALLATION
+SP_CHECK_REQUIRED_COMMANDS
