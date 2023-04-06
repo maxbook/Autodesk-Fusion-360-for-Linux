@@ -72,7 +72,7 @@ function SP_CHECK_REQUIRED_PACKAGES {
 	            y ) SP_INSTALL_REQUIRED_PACKAGES;
 	                SP_REQUIRED_COMMANDS;;
 	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
-		             exit;;
+		            exit;;
 	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
 		            exit 1;;
             esac
@@ -219,7 +219,7 @@ function SP_CHECK_VRAM {
             case $yn in 
 	            y ) ...;;
 	            n ) echo -e "${RED}The installer has been terminated!${NOCOLOR}";
-		             exit;;
+		            exit;;
 	            * ) echo -e "${RED}The installer was terminated for inexplicable reasons!${NOCOLOR}";
 		            exit 1;;
             esac
