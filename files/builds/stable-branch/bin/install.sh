@@ -86,15 +86,17 @@ function SP_CHECK_REQUIRED_PACKAGES {
 
 function SP_INSTALL_REQUIRED_PACKAGES {    
     DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
-        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]]; then
+        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]] || [[ $DISTRO_VERSION == *"Manjaro"*"Linux"* ]]; then
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo pacman -S dialog wget lsb-release coreutils mesa-demos polkit
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
-        elif [[ $DISTRO_VERSION == *"Debian"* ]] || [[ $DISTRO_VERSION == *"Ubuntu"* ]] || [[ $DISTRO_VERSION == *"Linux Mint"* ]]; then
+        elif [[ $DISTRO_VERSION == *"Debian"*"10"* ]] || [[ $DISTRO_VERSION == *"Debian"*"11"* ]] || [[ $DISTRO_VERSION == *"Debian"*"Sid"* ]] || [[ $DISTRO_VERSION == *"Ubuntu"*"18.04"* ]] \
+        || [[ $DISTRO_VERSION == *"Linux Mint"*"19"* ]] || [[ $DISTRO_VERSION == *"Ubuntu"*"20.04"* ]] || [[ $DISTRO_VERSION == *"Linux Mint"*"20"* ]] \
+        || [[ $DISTRO_VERSION == *"Ubuntu"*"22.04"* ]] || [[ $DISTRO_VERSION == *"Linux Mint"*"21"* ]]; then
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo apt-get install -y dialog wget lsb-release coreutils mesa-utils policykit-1 
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
-        elif [[ $DISTRO_VERSION == *"Fedora"* ]]; then
+        elif [[ $DISTRO_VERSION == *"Fedora"*"37"* ]] || [[ $DISTRO_VERSION == *"Fedora"*"38"* ]] || [[ $DISTRO_VERSION == *"Fedora"*"Rawhide"* ]]; then
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo dnf install -y dialog wget lsb-release coreutils mesa-utils polkit
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
@@ -106,11 +108,11 @@ function SP_INSTALL_REQUIRED_PACKAGES {
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo nix-env -iA nixos.dialog nixos.wget nixos.lsb_release nixos.coreutils nixos.mesa-utils nixos.polkit
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
-        elif [[ $DISTRO_VERSION == *"openSUSE"* ]]; then
+        elif [[ $DISTRO_VERSION == *"openSUSE"*"15.4"* ]] || [[ $DISTRO_VERSION == *"openSUSE"*"15.5"* ]] || [[ $DISTRO_VERSION == *"openSUSE"*"Tumbleweed"* ]]; then
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo zypper install -y dialog wget lsb-release coreutils Mesa-demo-x polkit
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
-        elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"* ]]; then
+        elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"*"8"* ]] || [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"*"9"* ]]; then
             echo -e "${YELLOW}All required packages for the installer will be installed!${NOCOLOR}"
             sudo dnf install -y dialog wget lsb-release coreutils mesa-utils policykit-1
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
@@ -123,8 +125,10 @@ function SP_INSTALL_REQUIRED_PACKAGES {
             sudo xbps-install -Sy dialog wget lsb-release coreutils mesa-demos polkit
             echo -e "${GREEN}All required packages for the installer are installed!${NOCOLOR}"
         else
-            echo -e "${YELLOW}The installer doesn't support your Linux distribution at this time!${NOCOLOR}";
+            echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}"; 
             echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+            exit;
+        fi
 }
 
 ##############################################################################################################################################################################
@@ -251,7 +255,6 @@ function SP_CHECK_GPU_DRIVER {
     elif [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"Intel"* ]]; then
         GPU_DRIVER="intel"
         SP_INSTALL_GPU_DRIVER
-    # Install the latest driver for Nvidia graphics card if not installed:
     elif [[ $(glxinfo | grep -A 10 -B 1 Vendor) == *"NVIDIA"* ]]; then
         GPU_DRIVER="nvidia"
         SP_INSTALL_GPU_DRIVER
@@ -260,6 +263,7 @@ function SP_CHECK_GPU_DRIVER {
         echo -e "${RED}The installer has been terminated!${NOCOLOR}"
         exit;
     fi
+    SP_INSTALL_GPU_DRIVER
 }
 
 ##############################################################################################################################################################################
@@ -268,7 +272,7 @@ function SP_CHECK_GPU_DRIVER {
 
 function SP_INSTALL_GPU_DRIVER {    
     DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
-        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]]; then
+        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]] || [[ $DISTRO_VERSION == *"Manjaro"*"Linux"* ]]; then
             if grep -q '^\[multilib\]$' /etc/pacman.conf ; then
                 echo -e "${GREEN}The multilib repository exists on your computer.${NOCOLOR}"
             else
@@ -607,7 +611,174 @@ function SP_INSTALL_GPU_DRIVER {
 # INSTALLATION OF THE PACKAGES OF WINE & WINETRICKS:                                                                                                                         #
 ##############################################################################################################################################################################
 
-# ...
+function SP_CHECK_WINE_VERSION {    
+    DISTRO_VERSION=$(lsb_release -ds) # Check which Linux Distro is used!
+        if [[ $DISTRO_VERSION == *"Arch"*"Linux"* ]] || [[ $DISTRO_VERSION == *"Manjaro"*"Linux"* ]]; then
+            if [[ $(pacman -Qe) == *"wine"*"wine-mono"*"wine_gecko"*"winetricks"*"p7zip"*"curl"*"cabextract"*"samba"*"ppp"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo pacman -Syu && sudo pacman -Syy
+                sudo pacman -S --needed wine wine-mono wine_gecko winetricks p7zip curl cabextract samba ppp
+                echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"Debian"* ]]; then
+            if [[ $(apt list --installed) == *"p7zip"*"p7zip-full"*"p7zip-rar"*"curl"*"winbind"*"cabextract"*"winehq-staging"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo apt-get --allow-releaseinfo-change update # Some systems require this command for all repositories to work properly and for the packages to be downloaded for installation!
+                sudo dpkg --add-architecture i386 # Added i386 support for wine!
+                if [[ $DISTRO_VERSION == *"Debian"*"10"* ]]; then
+                    if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://dl.winehq.org/wine-builds/debian/"* ]]; then
+                        sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/debian/ buster main'
+                    else
+                        if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_10/"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        else
+                            wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_10//Release.key -O Release.key -O- | sudo apt-key add -
+                            sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_10/ ./'
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        fi
+                    fi
+                elif [[ $DISTRO_VERSION == *"Debian"*"11"* ]]; then
+                    if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://dl.winehq.org/wine-builds/debian/"* ]]; then
+                        sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/debian/ buster main'
+                    else
+                        if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_11/"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        else
+                            wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_11//Release.key -O Release.key -O- | sudo apt-key add -
+                            sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_11/ ./'
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        fi
+                    fi
+                elif [[ $DISTRO_VERSION == *"Debian"*"Sid"* ]]; then
+                    if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://dl.winehq.org/wine-builds/debian/"* ]]; then
+                        sudo apt-add-repository -r 'deb https://dl.winehq.org/wine-builds/debian/ buster main'
+                        if [[ $(sudo grep -rhE ^deb /etc/apt/sources.list*) == *"https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_Testing_standard/"* ]]; then
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        else
+                            wget -q https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_Testing_standard//Release.key -O Release.key -O- | sudo apt-key add -
+                            sudo apt-add-repository 'deb https://download.opensuse.org/repositories/Emulators:/Wine:/Debian/Debian_Testing_standard/ ./'
+                            sudo apt-get update && sudo apt-get upgrade
+                            sudo apt-get install -y p7zip p7zip-full p7zip-rar curl winbind cabextract
+                            sudo apt-get install -y --install-recommends winehq-staging
+                            echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                        fi
+                    fi
+                else
+                    echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}";
+                    echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+                    exit; 
+            fi
+        elif [[ $DISTRO_VERSION == *"Fedora"* ]]; then
+            if [[ $(sudo dnf list installed) == *"p7zip"*"p7zip-plugins"*"curlcabextract"*"wine"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                if [[ $DISTRO_VERSION == *"Fedora"*"37"* ]]; then
+                    if [[ $(sudo dnf repolist all) == *"rpmfusion-free-release"*]] && [[ $(sudo dnf repolist all) == *"rpmfusion-nonfree-release"*]] && [[ $(sudo dnf repolist all) == *"wine"*]]; then
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl cabextract wine
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm 
+                        sudo dnf install https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+                        sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/Emulators:/Wine:/Fedora/Fedora_37/Emulators:Wine:Fedora.repo
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                elif [[ $DISTRO_VERSION == *"Fedora"*"38"* ]]; then
+                    if [[ $(sudo dnf repolist all) == *"rpmfusion-free-release"*]] && [[ $(sudo dnf repolist all) == *"rpmfusion-nonfree-release"*]] && [[ $(sudo dnf repolist all) == *"wine"*]]; then
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl cabextract wine
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm 
+                        sudo dnf install https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+                        sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/Emulators:/Wine:/Fedora/Fedora_38/Emulators:Wine:Fedora.repo
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                elif [[ $DISTRO_VERSION == *"Fedora"*"Rawhide"* ]]; then
+                    if [[ $(sudo dnf repolist all) == *"rpmfusion-free-release"*]] && [[ $(sudo dnf repolist all) == *"rpmfusion-nonfree-release"*]] && [[ $(sudo dnf repolist all) == *"wine"*]]; then
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl cabextract wine
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    else
+                        sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm 
+                        sudo dnf install https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+                        sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/Emulators:/Wine:/Fedora/Fedora_Rawhide/Emulators:Wine:Fedora.repo
+                        sudo dnf update && sudo dnf upgrade
+                        sudo dnf install p7zip p7zip-plugins curl wine cabextract
+                        echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+                    fi
+                else
+                    echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}";
+                    echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+                    exit;   
+                fi
+            fi
+        elif [[ $DISTRO_VERSION == *"Gentoo"*"Linux"* ]]; then
+            if [[ $(equery list '*') == *"virtual/wine app-emulation/winetricks"*"app-emulation/wine-mono"*"app-emulation/wine-gecko"*"app-arch/p7zip"*"app-arch/cabextract"*"net-misc/curl"*"net-fs/samba"*"net-dialup/ppp"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo emerge -nav virtual/wine app-emulation/winetricks app-emulation/wine-mono app-emulation/wine-gecko app-arch/p7zip app-arch/cabextract net-misc/curl net-fs/samba net-dialup/ppp
+                echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"nixos"* ]] || [[ $DISTRO_VERSION == *"NixOS"* ]]; then
+            if [[ $(nix-env -qa --installed "*") == *"nixos.curl"*"nixos.cabextract"*"nixos.p7zip"*"nixos.wine-staging"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo nix-env -iA nixos.curl nixos.cabextract nixos.p7zip nixos.wine-staging
+                echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"openSUSE"* ]]; then
+            # ...
+        elif [[ $DISTRO_VERSION == *"Red Hat Enterprise Linux"* ]]; then
+            # ...
+        elif [[ $DISTRO_VERSION == *"Solus"*"Linux"* ]]; then
+            if [[ $(eopkg li -l) == *"wine"*"winetricks"*"p7zip"*"curl"*"cabextract"*"samba"*"ppp"* ]]; then
+                echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo eopkg install -y wine winetricks p7zip curl cabextract samba ppp
+                echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+            fi
+        elif [[ $DISTRO_VERSION == *"Void"*"Linux"* ]]; then
+            if [[ $(xbps-query -l | awk '{ print $2 }' | xargs -n1 xbps-uhelper getpkgname) == *"wine"*"wine-mono"*"wine-gecko"*"winetricks"*"p7zip"*"curl"*"cabextract"*"samba"*"ppp"* ]]; then
+               echo -e "${GREEN}The latest wine version is already installed.${NOCOLOR}"
+            else
+                echo -e "${YELLOW}The latest wine version will be installed!${NOCOLOR}"
+                sudo xbps-install -Sy wine wine-mono wine-gecko winetricks p7zip curl cabextract samba ppp
+                echo -e "${GREEN}The latest wine version is installed!${NOCOLOR}"
+            fi
+        else
+            echo -e "${YELLOW}The installer doesn't support your current Linux distribution ($DISTRO_VERSION) at this time!${NOCOLOR}"; 
+            echo -e "${RED}The installer has been terminated!${NOCOLOR}"
+            exit;
+        fi
+}
 
 ###############################################################################################################################################################
 # ALL DIALOGS ARE ARRANGED HERE:                                                                                                                              #
@@ -623,7 +794,6 @@ SP_LOAD_COLOR_SHEME
 SP_ADD_DIRECTORIES
 SP_LOG_INSTALLATION
 SP_CHECK_REQUIRED_COMMANDS
-
 
 
 
